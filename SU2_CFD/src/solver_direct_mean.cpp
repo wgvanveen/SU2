@@ -8500,6 +8500,10 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
   unsigned short iDim, jDim, iVar, jVar;
   unsigned long iVertex, iPoint, Point_Normal, total_index;
   
+  unsigned long iExtIter = config->GetExtIter();
+  double F_plus = 1; 
+  double dt = config->GetDelta_UnstTimeND();
+
   double Wall_HeatFlux, dist_ij, *Coord_i, *Coord_j, theta2;
   double thetax, thetay, thetaz, etax, etay, etaz, pix, piy, piz, factor;
   double ProjGridVel, *GridVel, GridVel2, *Normal, Area, Pressure;
@@ -8547,11 +8551,25 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
        be zero (v = 0), unless there are moving walls (v = u_wall)---*/
       if (grid_movement) {
         GridVel = geometry->node[iPoint]->GetGridVel();
-        for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = GridVel[iDim];
-      } else {
-        for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = 0.0;
+		for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = GridVel[iDim];
+	  } else {
+        //for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = 0.0;
+		/* Variables to specify
+		 const double PI_NUMBER  = 3.141592653589793238463;
+		 double alpha_jet = 10;
+		 */
+		  if (iDim == 0) {
+			  Vector[iDim] = U_0 * sin(omega*PI_NUMBER*dt)*cos(alpha); //vertical velocity
+		  }
+		  else if (iDim == 1) {
+			  Vector[iDim] = -U_0 * sin(omega*PI_NUMBER*dt)*sin(alpha); // Update vertical velocity
+		  }
+		for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = sin(2*PI*dt*F*iExtIter);
       }
-      
+ 
+	  // Set u = sin(2*M_PI*dt*F*iExtIter)*cos(alpha_jet);
+      // v = -sin(2*M_PI*dt*F*iExtIter)*sin(alpha_jet);
+
       /*--- Impose the value of the velocity as a strong boundary
        condition (Dirichlet). Fix the velocity and remove any
        contribution to the residual at this node. ---*/
