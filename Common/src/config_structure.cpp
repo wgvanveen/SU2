@@ -205,6 +205,11 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
 	/* DESCRIPTION: Specified heat flux wall boundary marker(s)
    Format: ( Heat flux marker, wall heat flux (static), ... ) */
 	AddMarkerOutlet("MARKER_HEATFLUX", nMarker_HeatFlux, Marker_HeatFlux, Heat_Flux);
+  /* DESCRIPTION: % Jet wall boundary marker(s)
+   Format: (jet wall marker, frequency, phase offset, velocity_x,
+   velocity_y, velocity_z, ... ) */
+	AddMarkerInlet("MARKER_JET_WALL", nMarker_Jet_Wall, Marker_Jet_Wall,
+                 Jet_Frequency, Jet_Phase, Jet_Velocity);
 	/* DESCRIPTION: Nacelle inflow boundary marker(s)
    Format: ( nacelle inflow marker, fan face Mach, ... ) */
 	AddMarkerOutlet("MARKER_NACELLE_INFLOW", nMarker_NacelleInflow, Marker_NacelleInflow, FanFace_Mach_Target);
@@ -2396,7 +2401,7 @@ void CConfig::SetMarkers(unsigned short val_software, unsigned short val_izone) 
 	nMarker_All = nMarker_Euler + nMarker_FarField + nMarker_SymWall + nMarker_PerBound + nMarker_NearFieldBound + nMarker_Supersonic_Inlet
 			+ nMarker_InterfaceBound + nMarker_Dirichlet + nMarker_Neumann + nMarker_Inlet + nMarker_Outlet + nMarker_Isothermal + nMarker_HeatFlux
 			+ nMarker_NacelleInflow + nMarker_NacelleExhaust + nMarker_Dirichlet_Elec + nMarker_Displacement + nMarker_Load
-			+ nMarker_FlowLoad + nMarker_Pressure + nMarker_Custom + 2*nDomain;
+			+ nMarker_FlowLoad + nMarker_Pressure + nMarker_Jet_Wall + nMarker_Custom + 2*nDomain;
 
 	Marker_All_Tag        = new string[nMarker_All+2];			    // Store the tag that correspond with each marker.
 	Marker_All_SendRecv   = new short[nMarker_All+2];						// +#domain (send), -#domain (receive) or 0 (neither send nor receive).
@@ -2413,7 +2418,7 @@ void CConfig::SetMarkers(unsigned short val_software, unsigned short val_izone) 
 	iMarker_SymWall, iMarker_Pressure, iMarker_PerBound, iMarker_NearFieldBound, iMarker_InterfaceBound, iMarker_Dirichlet,
 	iMarker_Inlet, iMarker_Outlet, iMarker_Isothermal, iMarker_HeatFlux, iMarker_NacelleInflow, iMarker_NacelleExhaust, iMarker_Displacement, iMarker_Load,
 	iMarker_FlowLoad, iMarker_Neumann, iMarker_Monitoring, iMarker_Designing, iMarker_GeoEval, iMarker_Plotting, iMarker_DV, iMarker_Moving,
-	iMarker_Supersonic_Inlet;
+	iMarker_Supersonic_Inlet, iMarker_Jet_Wall;
 
 	for (iMarker_All = 0; iMarker_All < nMarker_All; iMarker_All++) {
 		Marker_All_Tag[iMarker_All] = "NONE";
@@ -2429,7 +2434,8 @@ void CConfig::SetMarkers(unsigned short val_software, unsigned short val_izone) 
 	}
 
 	nMarker_Config = nMarker_Euler + nMarker_FarField + nMarker_SymWall + nMarker_Pressure + nMarker_PerBound + nMarker_NearFieldBound
-			+ nMarker_InterfaceBound + nMarker_Dirichlet + nMarker_Neumann + nMarker_Inlet + nMarker_Outlet + nMarker_Isothermal + nMarker_HeatFlux + nMarker_NacelleInflow + nMarker_NacelleExhaust + nMarker_Supersonic_Inlet + nMarker_Displacement + nMarker_Load + nMarker_FlowLoad + nMarker_Custom;
+			+ nMarker_InterfaceBound + nMarker_Dirichlet + nMarker_Neumann + nMarker_Inlet + nMarker_Outlet + nMarker_Isothermal + nMarker_HeatFlux
+  + nMarker_NacelleInflow + nMarker_NacelleExhaust + nMarker_Supersonic_Inlet + nMarker_Displacement + nMarker_Load + nMarker_FlowLoad + nMarker_Jet_Wall + nMarker_Custom;
 
 	Marker_Config_Tag        = new string[nMarker_Config];
 	Marker_Config_Boundary   = new unsigned short[nMarker_Config];
@@ -2562,6 +2568,12 @@ void CConfig::SetMarkers(unsigned short val_software, unsigned short val_izone) 
 		iMarker_Config++;
 	}
 
+  for (iMarker_Jet_Wall = 0; iMarker_Jet_Wall < nMarker_Jet_Wall; iMarker_Jet_Wall++) {
+		Marker_Config_Tag[iMarker_Config] = Marker_Jet_Wall[iMarker_Jet_Wall];
+		Marker_Config_Boundary[iMarker_Config] = JET_WALL;
+		iMarker_Config++;
+	}
+  
 	for (iMarker_Displacement = 0; iMarker_Displacement < nMarker_Displacement; iMarker_Displacement++) {
 		Marker_Config_Tag[iMarker_Config] = Marker_Displacement[iMarker_Displacement];
 		Marker_Config_Boundary[iMarker_Config] = DISPLACEMENT_BOUNDARY;
@@ -2627,7 +2639,7 @@ void CConfig::SetMarkers(unsigned short val_software, unsigned short val_izone) 
 void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
 	unsigned short iMarker_Euler, iMarker_Custom, iMarker_FarField,
 	iMarker_SymWall, iMarker_PerBound, iMarker_Pressure, iMarker_NearFieldBound, iMarker_InterfaceBound, iMarker_Dirichlet,
-	iMarker_Inlet, iMarker_Outlet, iMarker_Isothermal, iMarker_HeatFlux, iMarker_NacelleInflow, iMarker_NacelleExhaust, iMarker_Displacement, iMarker_Load, iMarker_FlowLoad,  iMarker_Neumann, iMarker_Monitoring, iMarker_Designing, iMarker_GeoEval, iMarker_Plotting, iMarker_DV, iMarker_Moving, iMarker_Supersonic_Inlet;
+	iMarker_Inlet, iMarker_Outlet, iMarker_Isothermal, iMarker_HeatFlux, iMarker_NacelleInflow, iMarker_NacelleExhaust, iMarker_Displacement, iMarker_Load, iMarker_FlowLoad,  iMarker_Neumann, iMarker_Monitoring, iMarker_Designing, iMarker_GeoEval, iMarker_Plotting, iMarker_DV, iMarker_Moving, iMarker_Supersonic_Inlet, iMarker_Jet_Wall;
 
 	cout << endl <<"-------------------------------------------------------------------------" << endl;
 	cout <<"|    _____   _    _   ___                                               |" << endl;
@@ -3790,6 +3802,15 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
 		for (iMarker_HeatFlux = 0; iMarker_HeatFlux < nMarker_HeatFlux; iMarker_HeatFlux++) {
 			cout << Marker_HeatFlux[iMarker_HeatFlux];
 			if (iMarker_HeatFlux < nMarker_HeatFlux-1) cout << ", ";
+			else cout <<"."<<endl;
+		}
+	}
+  
+  if (nMarker_Jet_Wall != 0) {
+		cout << "Jet wall boundary marker(s): ";
+		for (iMarker_Jet_Wall = 0; iMarker_Jet_Wall < nMarker_Jet_Wall; iMarker_Jet_Wall++) {
+			cout << Marker_Jet_Wall[iMarker_Jet_Wall];
+			if (iMarker_Jet_Wall < nMarker_Jet_Wall-1) cout << ", ";
 			else cout <<"."<<endl;
 		}
 	}
@@ -5043,6 +5064,27 @@ double CConfig::GetWall_HeatFlux(string val_marker) {
 	for (iMarker_HeatFlux = 0; iMarker_HeatFlux < nMarker_HeatFlux; iMarker_HeatFlux++)
 		if (Marker_HeatFlux[iMarker_HeatFlux] == val_marker) break;
 	return Heat_Flux[iMarker_HeatFlux];
+}
+
+double CConfig::GetJet_Frequency(string val_marker) {
+	unsigned short iMarker_Jet_Wall;
+	for (iMarker_Jet_Wall = 0; iMarker_Jet_Wall < nMarker_Jet_Wall; iMarker_Jet_Wall++)
+		if (Marker_Jet_Wall[iMarker_Jet_Wall] == val_marker) break;
+	return Jet_Frequency[iMarker_Jet_Wall];
+}
+
+double CConfig::GetJet_Phase(string val_marker) {
+	unsigned short iMarker_Jet_Wall;
+	for (iMarker_Jet_Wall = 0; iMarker_Jet_Wall < nMarker_Jet_Wall; iMarker_Jet_Wall++)
+		if (Marker_Jet_Wall[iMarker_Jet_Wall] == val_marker) break;
+	return Jet_Phase[iMarker_Jet_Wall];
+}
+
+double* CConfig::GetJet_Velocity(string val_marker) {
+	unsigned short iMarker_Jet_Wall;
+	for (iMarker_Jet_Wall = 0; iMarker_Jet_Wall < nMarker_Jet_Wall; iMarker_Jet_Wall++)
+		if (Marker_Jet_Wall[iMarker_Jet_Wall] == val_marker) break;
+	return Jet_Velocity[iMarker_Jet_Wall];
 }
 
 double CConfig::GetFanFace_Mach_Target(string val_marker) {

@@ -135,6 +135,7 @@ private:
 	nMarker_Outlet,					/*!< \brief Number of outlet flow markers. */
 	nMarker_Isothermal,     /*!< \brief Number of isothermal wall boundaries. */
 	nMarker_HeatFlux,       /*!< \brief Number of constant heat flux wall boundaries. */
+  nMarker_Jet_Wall,       /*!< \brief Number of jet wall boundaries. */
 	nMarker_NacelleExhaust,					/*!< \brief Number of nacelle exhaust flow markers. */
 	nMarker_NacelleInflow,					/*!< \brief Number of nacelle inflow flow markers. */
 	nMarker_Displacement,					/*!< \brief Number of displacement surface markers. */
@@ -162,6 +163,7 @@ private:
 	*Marker_Outlet,					/*!< \brief Outlet flow markers. */
 	*Marker_Isothermal,     /*!< \brief Isothermal wall markers. */
 	*Marker_HeatFlux,       /*!< \brief Constant heat flux wall markers. */
+  *Marker_Jet_Wall,       /*!< \brief Jet wall markers. */
 	*Marker_NacelleInflow,					/*!< \brief Nacelle Inflow flow markers. */
 	*Marker_NacelleExhaust,					/*!< \brief Nacelle Exhaust flow markers. */
 	*Marker_Displacement,					/*!< \brief Displacement markers. */
@@ -185,6 +187,9 @@ private:
     double *Outlet_Pressure;    /*!< \brief Specified back pressures (static) for outlet boundaries. */
 	double *Isothermal_Temperature; /*!< \brief Specified isothermal wall temperatures (static). */
 	double *Heat_Flux;  /*!< \brief Specified wall heat fluxes. */
+  double *Jet_Frequency;    /*!< \brief Specified frequencies for pulsing jet boundaries. */
+	double *Jet_Phase;    /*!< \brief Specified phase offset for pulsing jet boundaries. */
+	double **Jet_Velocity;  /*!< \brief Specified jet velocity for pulsing jet boundaries. */
 	double *Displ_Value;    /*!< \brief Specified displacement for displacement boundaries. */
 	double *Load_Value;    /*!< \brief Specified force for load boundaries. */
 	double *FlowLoad_Value;    /*!< \brief Specified force for flow load boundaries. */
@@ -4217,6 +4222,27 @@ public:
 	 */
 	double GetWall_HeatFlux(string val_index);
 
+  /*!
+	 * \brief Get the frequency at a pulsing jet boundary.
+	 * \param[in] val_index - Index corresponding to the inlet boundary.
+	 * \return The jet frequency.
+	 */
+	double GetJet_Frequency(string val_index);
+  
+  /*!
+	 * \brief Get the phase offset at a pulsing jet boundary.
+	 * \param[in] val_index - Index corresponding to the inlet boundary.
+	 * \return The jet phase offset.
+	 */
+	double GetJet_Phase(string val_index);
+  
+	/*!
+	 * \brief Get the jet velocity vector at a jet wall boundary.
+	 * \param[in] val_index - Index corresponding to the inlet boundary.
+	 * \return The jet velocity vector.
+	 */
+	double* GetJet_Velocity(string val_index);
+  
 	/*!
 	 * \brief Get the back pressure (static) at an outlet boundary.
 	 * \param[in] val_index - Index corresponding to the outlet boundary.

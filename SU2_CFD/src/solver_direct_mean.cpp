@@ -473,7 +473,7 @@ CEulerSolver::CEulerSolver(CGeometry *geometry, CConfig *config, unsigned short 
     }
 #ifndef NO_MPI
 #ifdef WINDOWS
-	MPI_Reduce(&counter_local, &counter_global, 1, MPI_UNSIGNED_LONG, MPI_SUM, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&counter_local, &counter_global, 1, MPI_UNSIGNED_LONG, MPI_SUM, MASTER_NODE, MPI_COMM_WORLD);
 #else
     MPI::COMM_WORLD.Reduce(&counter_local, &counter_global, 1, MPI::UNSIGNED_LONG, MPI::SUM, MASTER_NODE);
 #endif
@@ -636,8 +636,8 @@ void CEulerSolver::Set_MPI_Solution(CGeometry *geometry, CConfig *config) {
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_U, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_U, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_U, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -753,8 +753,8 @@ void CEulerSolver::Set_MPI_Solution_Old(CGeometry *geometry, CConfig *config) {
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_U, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_U, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_U, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_U, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -869,8 +869,8 @@ void CEulerSolver::Set_MPI_Undivided_Laplacian(CGeometry *geometry, CConfig *con
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Undivided_Laplacian, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Undivided_Laplacian, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Undivided_Laplacian, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Undivided_Laplacian, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Undivided_Laplacian, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Undivided_Laplacian, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -987,10 +987,10 @@ void CEulerSolver::Set_MPI_MaxEigenvalue(CGeometry *geometry, CConfig *config) {
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Lambda, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Lambda, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
       MPI_Sendrecv(Buffer_Send_Neighbor, nBufferS_Vector, MPI_UNSIGNED_SHORT, send_to, 1,
-                               Buffer_Receive_Neighbor, nBufferR_Vector, MPI_UNSIGNED_SHORT, receive_from, 1, MPI_COMM_WORLD, NULL);
+                   Buffer_Receive_Neighbor, nBufferR_Vector, MPI_UNSIGNED_SHORT, receive_from, 1, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Lambda, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -1065,8 +1065,8 @@ void CEulerSolver::Set_MPI_Dissipation_Switch(CGeometry *geometry, CConfig *conf
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Lambda, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Lambda, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Lambda, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Lambda, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -1142,8 +1142,8 @@ void CEulerSolver::Set_MPI_Solution_Gradient(CGeometry *geometry, CConfig *confi
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Gradient, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Gradient, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Gradient, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -1262,8 +1262,8 @@ void CEulerSolver::Set_MPI_Solution_Limiter(CGeometry *geometry, CConfig *config
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Limit, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Limit, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Limit, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -1386,8 +1386,8 @@ void CEulerSolver::Set_MPI_Primitive_Gradient(CGeometry *geometry, CConfig *conf
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Gradient, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Gradient, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Gradient, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Gradient, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -1506,8 +1506,8 @@ void CEulerSolver::Set_MPI_Primitive_Limiter(CGeometry *geometry, CConfig *confi
       
       /*--- Send/Receive information using Sendrecv ---*/
 #ifdef WINDOWS
-	  MPI_Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
-                               Buffer_Receive_Limit, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
+      MPI_Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI_DOUBLE, send_to, 0,
+                   Buffer_Receive_Limit, nBufferR_Vector, MPI_DOUBLE, receive_from, 0, MPI_COMM_WORLD, NULL);
 #else
       MPI::COMM_WORLD.Sendrecv(Buffer_Send_Limit, nBufferS_Vector, MPI::DOUBLE, send_to, 0,
                                Buffer_Receive_Limit, nBufferR_Vector, MPI::DOUBLE, receive_from, 0);
@@ -2156,7 +2156,7 @@ void CEulerSolver::SetTime_Step(CGeometry *geometry, CSolver **solver_container,
     double rbuf_time, sbuf_time;
     sbuf_time = Global_Delta_Time;
 #ifdef WINDOWS
-	MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Bcast(&rbuf_time, 1, MPI_DOUBLE, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
 #else
@@ -2179,7 +2179,7 @@ void CEulerSolver::SetTime_Step(CGeometry *geometry, CSolver **solver_container,
     double rbuf_time, sbuf_time;
     sbuf_time = Global_Delta_UnstTimeND;
 #ifdef WINDOWS
-	MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Bcast(&rbuf_time, 1, MPI_DOUBLE, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
 #else
@@ -3045,7 +3045,7 @@ void CEulerSolver::Inviscid_Forces_Sections(CGeometry *geometry, CConfig *config
           
           MinPlane = 0; MaxPlane = 1.1;
           MinXCoord = 0; MaxXCoord = 10.0;
-
+          
           Plane_Normal[0] = 0.0;
           Plane_Normal[1] = 1.0;
           Plane_Normal[2] = 0.0;
@@ -3721,7 +3721,7 @@ void CEulerSolver::Inviscid_Forces(CGeometry *geometry, CConfig *config) {
   double MyAllBound_CQ_Inv           = AllBound_CQ_Inv;           AllBound_CQ_Inv = 0.0;
   double MyAllBound_CMerit_Inv       = AllBound_CMerit_Inv;       AllBound_CMerit_Inv = 0.0;
   double MyAllBound_CNearFieldOF_Inv = AllBound_CNearFieldOF_Inv; AllBound_CNearFieldOF_Inv = 0.0;
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(&MyAllBound_CDrag_Inv, &AllBound_CDrag_Inv, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&MyAllBound_CLift_Inv, &AllBound_CLift_Inv, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -3780,7 +3780,7 @@ void CEulerSolver::Inviscid_Forces(CGeometry *geometry, CConfig *config) {
     Surface_CMy_Inv[iMarker_Monitoring]     = 0.0;
     Surface_CMz_Inv[iMarker_Monitoring]     = 0.0;
   }
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(MySurface_CLift_Inv, Surface_CLift_Inv, config->GetnMarker_Monitoring(), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MySurface_CDrag_Inv, Surface_CDrag_Inv, config->GetnMarker_Monitoring(), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -4597,19 +4597,19 @@ void CEulerSolver::GetNacelle_Properties(CGeometry *geometry, CConfig *config, u
   }
   
 #ifndef NO_MPI
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(FanFace_MassFlow_Local, FanFace_MassFlow_Total, nMarker_NacelleInflow, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(FanFace_Mach_Local, FanFace_Mach_Total, nMarker_NacelleInflow, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(FanFace_Pressure_Local, FanFace_Pressure_Total, nMarker_NacelleInflow, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(FanFace_Area_Local, FanFace_Area_Total, nMarker_NacelleInflow, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);  
+  MPI_Allreduce(FanFace_Area_Local, FanFace_Area_Total, nMarker_NacelleInflow, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(Exhaust_MassFlow_Local, Exhaust_MassFlow_Total, nMarker_NacelleExhaust, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(Exhaust_Area_Local, Exhaust_Area_Total, nMarker_NacelleExhaust, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 #else
   MPI::COMM_WORLD.Allreduce(FanFace_MassFlow_Local, FanFace_MassFlow_Total, nMarker_NacelleInflow, MPI::DOUBLE, MPI::SUM);
   MPI::COMM_WORLD.Allreduce(FanFace_Mach_Local, FanFace_Mach_Total, nMarker_NacelleInflow, MPI::DOUBLE, MPI::SUM);
   MPI::COMM_WORLD.Allreduce(FanFace_Pressure_Local, FanFace_Pressure_Total, nMarker_NacelleInflow, MPI::DOUBLE, MPI::SUM);
-  MPI::COMM_WORLD.Allreduce(FanFace_Area_Local, FanFace_Area_Total, nMarker_NacelleInflow, MPI::DOUBLE, MPI::SUM); 
+  MPI::COMM_WORLD.Allreduce(FanFace_Area_Local, FanFace_Area_Total, nMarker_NacelleInflow, MPI::DOUBLE, MPI::SUM);
   MPI::COMM_WORLD.Allreduce(Exhaust_MassFlow_Local, Exhaust_MassFlow_Total, nMarker_NacelleExhaust, MPI::DOUBLE, MPI::SUM);
   MPI::COMM_WORLD.Allreduce(Exhaust_Area_Local, Exhaust_Area_Total, nMarker_NacelleExhaust, MPI::DOUBLE, MPI::SUM);
 #endif
@@ -6134,7 +6134,7 @@ void CEulerSolver::BC_Interface_Boundary(CGeometry *geometry, CSolver **solver_c
   double *Normal = new double[nDim];
   double *PrimVar_i = new double[nPrimVar];
   double *PrimVar_j = new double[nPrimVar];
-
+  
 #ifdef NO_MPI
   
   for(iVertex = 0; iVertex < geometry->nVertex[val_marker]; iVertex++) {
@@ -6293,7 +6293,7 @@ void CEulerSolver::BC_Interface_Boundary(CGeometry *geometry, CSolver **solver_c
   delete [] Normal;
   delete [] PrimVar_i;
   delete [] PrimVar_j;
-
+  
 }
 
 void CEulerSolver::BC_NearField_Boundary(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
@@ -6302,8 +6302,8 @@ void CEulerSolver::BC_NearField_Boundary(CGeometry *geometry, CSolver **solver_c
   /*--- Call the Interface_Boundary residual --- */
   
   BC_Interface_Boundary(geometry, solver_container, numerics, config, val_marker);
-
-
+  
+  
 }
 
 void CEulerSolver::BC_Dirichlet(CGeometry *geometry, CSolver **solver_container,
@@ -6822,13 +6822,13 @@ void CEulerSolver::SetFreeSurface_Distance(CGeometry *geometry, CConfig *config)
   unsigned long *Buffer_Send_nVertex = NULL, *Buffer_Receive_nVertex = NULL,
   nLocalVertex_LevelSet = 0, nGlobalVertex_LevelSet = 0, MaxLocalVertex_LevelSet = 0, nBuffer;
   double *Buffer_Send_Coord = NULL, *Buffer_Receive_Coord = NULL;
-
+  
 #ifdef WINDOWS
   MPI_Comm_size(MPI_COMM_WORLD,&nProcessor);
 #else
   nProcessor = MPI::COMM_WORLD.Get_size();
 #endif
-
+  
 #ifdef WINDOWS
   MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 #else
@@ -6846,7 +6846,7 @@ void CEulerSolver::SetFreeSurface_Distance(CGeometry *geometry, CConfig *config)
   }
   
   Buffer_Send_nVertex[0] = nLocalVertex_LevelSet;
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(&nLocalVertex_LevelSet, &nGlobalVertex_LevelSet, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&nLocalVertex_LevelSet, &MaxLocalVertex_LevelSet, 1, MPI_UNSIGNED_LONG, MPI_MAX, MPI_COMM_WORLD);
@@ -6876,7 +6876,7 @@ void CEulerSolver::SetFreeSurface_Distance(CGeometry *geometry, CConfig *config)
       nLocalVertex_LevelSet++;
     }
   }
-
+  
 #ifdef WINDOWS
   MPI_Allgather(Buffer_Send_Coord, nBuffer, MPI_DOUBLE, Buffer_Receive_Coord, nBuffer, MPI_DOUBLE, MPI_COMM_WORLD);
 #else
@@ -7464,7 +7464,7 @@ CNSSolver::CNSSolver(CGeometry *geometry, CConfig *config, unsigned short iMesh)
     }
 #ifndef NO_MPI
 #ifdef WINDOWS
-	MPI_Reduce(&counter_local, &counter_global, 1, MPI_UNSIGNED_LONG, MPI_SUM, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&counter_local, &counter_global, 1, MPI_UNSIGNED_LONG, MPI_SUM, MASTER_NODE, MPI_COMM_WORLD);
 #else
     MPI::COMM_WORLD.Reduce(&counter_local, &counter_global, 1, MPI::UNSIGNED_LONG, MPI::SUM, MASTER_NODE);
 #endif
@@ -7545,7 +7545,7 @@ void CNSSolver::Preprocessing(CGeometry *geometry, CSolver **solver_container, C
   unsigned long iPoint, ErrorCounter = 0;
   bool RightSol;
   int rank;
-
+  
 #ifdef NO_MPI
 	rank = MASTER_NODE;
 #else
@@ -7795,7 +7795,7 @@ void CNSSolver::SetTime_Step(CGeometry *geometry, CSolver **solver_container, CC
     double rbuf_time, sbuf_time;
     sbuf_time = Global_Delta_Time;
 #ifdef WINDOWS
-	MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Bcast(&rbuf_time, 1, MPI_DOUBLE, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
 #else
@@ -7818,7 +7818,7 @@ void CNSSolver::SetTime_Step(CGeometry *geometry, CSolver **solver_container, CC
     double rbuf_time, sbuf_time;
     sbuf_time = Global_Delta_UnstTimeND;
 #ifdef WINDOWS
-	MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
+    MPI_Reduce(&sbuf_time, &rbuf_time, 1, MPI_DOUBLE, MPI_MIN, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Bcast(&rbuf_time, 1, MPI_DOUBLE, MASTER_NODE, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
 #else
@@ -8158,7 +8158,7 @@ void CNSSolver::Viscous_Forces(CGeometry *geometry, CConfig *config) {
   double MyAllBound_CMerit_Visc       = AllBound_CMerit_Visc;       AllBound_CMerit_Visc = 0.0;
   double MyAllBound_Q_Visc            = AllBound_Q_Visc;            AllBound_Q_Visc = 0.0;
   double MyAllBound_Maxq_Visc         = AllBound_Maxq_Visc;         AllBound_Maxq_Visc = 0.0;
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(&MyAllBound_CDrag_Visc, &AllBound_CDrag_Visc, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&MyAllBound_CLift_Visc, &AllBound_CLift_Visc, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -8218,7 +8218,7 @@ void CNSSolver::Viscous_Forces(CGeometry *geometry, CConfig *config) {
     Surface_CMy_Visc[iMarker_Monitoring]     = 0.0;
     Surface_CMz_Visc[iMarker_Monitoring]     = 0.0;
   }
-
+  
 #ifdef WINDOWS
   MPI_Allreduce(MySurface_CLift_Visc, Surface_CLift_Visc, config->GetnMarker_Monitoring(), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MySurface_CDrag_Visc, Surface_CDrag_Visc, config->GetnMarker_Monitoring(), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -8502,15 +8502,11 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
   
   unsigned long iExtIter = config->GetExtIter();
   double dt = config->GetDelta_UnstTimeND();
-
-  /*--- Jet variables with 
-  C_mu = 2*h/c*(U_jet/U_inf)^2, F_plus = f*c/U_inf---*/
-
-  double F_plus = 1; 
-  double alpha_jet = 10.0;
-  double U_jet = 1;
-  double ProjJetVel, JetVel2, JetVel[3];
-
+  
+  /*--- Jet variables with
+   C_mu = 2*h/c*(U_jet/U_inf)^2, F_plus = f*c/U_inf---*/
+  
+  
   double Wall_HeatFlux, dist_ij, *Coord_i, *Coord_j, theta2;
   double thetax, thetay, thetaz, etax, etay, etaz, pix, piy, piz, factor;
   double ProjGridVel, *GridVel, GridVel2, *Normal, Area, Pressure;
@@ -8527,8 +8523,37 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
   /*--- Identify the boundary by string name ---*/
   string Marker_Tag = config->GetMarker_All_Tag(val_marker);
   
-  /*--- Get the specified wall heat flux from config ---*/
-  Wall_HeatFlux = config->GetWall_HeatFlux(Marker_Tag);
+  //!! The wall heat flux is hard-coded to zero for now.
+  Wall_HeatFlux = 0.0; //config->GetWall_HeatFlux(Marker_Tag);
+  
+  /*--- Get our new values from the config file. The frequency and phase
+   offset are constant doubles for each jet boundary. The jet velocity
+   is a vector of size nDim that will give you both the direction of the
+   jet in space when normalized (see Jet_Direction below) and also the
+   magnitude. ---*/
+  
+  double F_plus = config->GetJet_Frequency(Marker_Tag);   //1
+  double Phase_Offset = config->GetJet_Phase(Marker_Tag); //0.0;
+  double *Jet_Velocity = config->GetJet_Velocity(Marker_Tag);
+  
+  double U_jet = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++)
+    U_jet += Jet_Velocity[iDim]*Jet_Velocity[iDim];
+  U_jet = sqrt(U_jet);
+  
+  double Jet_Direction[3];
+  for (iDim = 0; iDim < nDim; iDim++)
+    Jet_Direction[iDim] = Jet_Velocity[iDim]/U_jet;
+  
+  cout << "Jet BC values: " << F_plus << "\t" << Phase_Offset << "\t" << Jet_Velocity[0] << "\t" << Jet_Velocity[1] << endl;
+  
+  /*--- Recompute your angle based on a reference direction. Here, I am
+   using degrees above the positive x-axis and assuming 2D (like we
+   do for the angle of attack) ---*/
+  
+  double alpha_jet = atan2(Jet_Direction[1],Jet_Direction[0]); //10.0;
+  
+  double ProjJetVel, JetVel2, JetVel[3];
   
   /*--- Loop over all of the vertices on this boundary marker ---*/
   for(iVertex = 0; iVertex < geometry->nVertex[val_marker]; iVertex++) {
@@ -8558,29 +8583,29 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
        be (u,v,0) = (U_jet*sin((F+)*PI*t)*cos(alpha),-U_jet*sin((F+)*PI*t)*sin(alpha),0), unless there are moving walls (v = u_wall)---*/
       if (grid_movement) {
         GridVel = geometry->node[iPoint]->GetGridVel();
-		for (iDim = 0; iDim < nDim; iDim++) { 
-		  if (iDim == 0) // Set U-Velocity
-			Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1.0;
-		  if (iDim == 1) // Set V-Velocity
-			Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
-		  if (iDim == 2)
-			Vector[iDim] = GridVel[iDim];
-		}
-	  } else {
+        for (iDim = 0; iDim < nDim; iDim++) {
+          if (iDim == 0) // Set U-Velocity
+            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1.0;
+          if (iDim == 1) // Set V-Velocity
+            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
+          if (iDim == 2)
+            Vector[iDim] = GridVel[iDim];
+        }
+      } else {
         //for (iDim = 0; iDim < nDim; iDim++) Vector[iDim] = 0.0;
-		/*--- Variables to specify
-		 const double PI_NUMBER  = 3.141592653589793238463;
-		 double alpha_jet = 10.0---*/
-		for (iDim = 0; iDim < nDim; iDim++){
-		  if (iDim == 0) // Set U-Velocity
-			Vector[iDim] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1;
-		  if (iDim == 1) // Set V-Velocity
-			Vector[iDim] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1;
-		  if (iDim == 2)
-			Vector[iDim] = 0.0;
-		}
+        /*--- Variables to specify
+         const double PI_NUMBER  = 3.141592653589793238463;
+         double alpha_jet = 10.0---*/
+        for (iDim = 0; iDim < nDim; iDim++){
+          if (iDim == 0) // Set U-Velocity
+            Vector[iDim] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1;
+          if (iDim == 1) // Set V-Velocity
+            Vector[iDim] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1;
+          if (iDim == 2)
+            Vector[iDim] = 0.0;
+        }
       }
- 
+      
       /*--- Impose the value of the velocity as a strong boundary
        condition (Dirichlet). Fix the velocity and remove any
        contribution to the residual at this node. ---*/
@@ -8595,15 +8620,15 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
        Compute the residual due to the prescribed heat flux. ---*/
       Res_Visc[nDim+1] = Wall_HeatFlux * Area;
       
-	  /* Modified for BC_Jet_Wall taken from GridVel ---*/
+      /* Modified for BC_Jet_Wall taken from GridVel ---*/
       
       /*--- Get the jet velocity at the current boundary node ---*/
       JetVel[0] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1.0;
-	  JetVel[1] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
+      JetVel[1] = U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
       ProjJetVel = 0.0;
       for (iDim = 0; iDim < nDim; iDim++)
         ProjGridVel += JetVel[iDim]*UnitNormal[iDim]*Area;
-        
+      
       /*--- Retrieve other primitive quantities and viscosities ---*/
       Density  = node[iPoint]->GetSolution(0);
       if (compressible) {
@@ -8715,7 +8740,7 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
           pix = JetVel[0]*thetax + JetVel[1]*etaz   + JetVel[2]*etay;
           piy = JetVel[0]*etaz   + JetVel[1]*thetay + JetVel[2]*etax;
           piz = JetVel[0]*etay   + JetVel[1]*etax   + JetVel[2]*thetaz;
-           
+          
           Jacobian_i[nDim+1][0] -= factor*(-pix*JetVel[0]+piy*JetVel[1]+piz*JetVel[2]);
           Jacobian_i[nDim+1][1] -= factor*pix;
           Jacobian_i[nDim+1][2] -= factor*piy;
@@ -8725,7 +8750,7 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
         /*--- Subtract the block from the Global Jacobian structure ---*/
         Jacobian.SubtractBlock(iPoint, iPoint, Jacobian_i);
       }
-
+      
       /*--- If the wall is moving, there are additional residual contributions
        due to pressure (p v_wall.n) and shear stress (tau.v_wall.n). ---*/
       if (grid_movement) {
@@ -8861,10 +8886,10 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
       
       /*--- Convective contribution to the residual at the wall ---*/
       LinSysRes.AddBlock(iPoint, Res_Conv);
-      
+
       /*--- Viscous contribution to the residual at the wall ---*/
       LinSysRes.SubtractBlock(iPoint, Res_Visc);
-      
+
       /*--- Enforce the no-slip boundary condition in a strong way by
        modifying the velocity-rows of the Jacobian (1 on the diagonal). ---*/
       if (implicit) {
