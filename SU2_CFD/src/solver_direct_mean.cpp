@@ -8585,9 +8585,9 @@ void CNSSolver::BC_Jet_Wall(CGeometry *geometry, CSolver **solver_container, CNu
         GridVel = geometry->node[iPoint]->GetGridVel();
         for (iDim = 0; iDim < nDim; iDim++) {
           if (iDim == 0) // Set U-Velocity
-            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1.0;
+            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*2.0*PI_NUMBER*dt*iExtIter) * cos(alpha_jet*PI_NUMBER/180.0)*1.0;
           if (iDim == 1) // Set V-Velocity
-            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
+            Vector[iDim] = GridVel[iDim] + U_jet * sin(F_plus*2.0*PI_NUMBER*dt*iExtIter) * sin(alpha_jet*PI_NUMBER/180.0)*1.0;
           if (iDim == 2)
             Vector[iDim] = GridVel[iDim];
         }
