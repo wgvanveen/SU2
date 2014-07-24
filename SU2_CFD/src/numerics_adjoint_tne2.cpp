@@ -2,7 +2,7 @@
  * \file numerics_adjoint_mean.cpp
  * \brief This file contains all the convective term discretization.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -760,6 +760,336 @@ void CCentLax_AdjTNE2::ComputeResidual (double *val_resconv_i,
 		}
 	}
 }
+
+
+CAvgGrad_AdjTNE2::CAvgGrad_AdjTNE2(unsigned short val_nDim,
+                                   unsigned short val_nVar,
+                                   CConfig *config) : CNumerics(val_nDim,
+                                                                val_nVar,
+                                                                config) {
+	unsigned short iDim;
+  
+  implicit = (config->GetKind_TimeIntScheme_AdjFlow() == EULER_IMPLICIT);
+  
+  nDim         = val_nDim;
+  nSpecies     = config->GetnSpecies();
+  nVar         = val_nVar;
+  
+	vel   = new double[nDim];
+  vel_i = new double[nDim];
+  vel_j = new double[nDim];
+	Mean_GradPhi = new double* [nDim];
+	for (iDim = 0; iDim < nDim; iDim++)
+		Mean_GradPhi[iDim] = new double [nDim];
+	Mean_GradPsiE = new double [nDim];
+  Mean_GradPsiEve = new double [nDim];
+	Edge_Vector = new double [nDim];
+  
+  SigmaPhi  = new double*[nDim];
+  SigmaPsiE = new double*[nDim];
+  for (iDim = 0; iDim < nDim; iDim++) {
+    SigmaPhi[iDim]  = new double[nDim];
+    SigmaPsiE[iDim] = new double[nDim];
+  }
+}
+
+CAvgGrad_AdjTNE2::~CAvgGrad_AdjTNE2(void) {
+  unsigned short iDim;
+  
+  delete [] vel;
+  delete [] vel_i;
+  delete [] vel_j;
+	delete [] Edge_Vector;
+	delete [] Mean_GradPsiE;
+  delete [] Mean_GradPsiEve;
+	for (iDim = 0; iDim < nDim; iDim++)
+		delete [] Mean_GradPhi[iDim];
+  
+  for (iDim = 0; iDim < nDim; iDim++) {
+    delete [] SigmaPhi[iDim];
+    delete [] SigmaPsiE[iDim];
+  }
+  delete [] SigmaPhi;
+  delete [] SigmaPsiE;
+  
+}
+
+void CAvgGrad_AdjTNE2::ComputeResidual(double *val_residual_i,
+                                       double *val_residual_j,
+                                       double **val_Jacobian_ii,
+                                       double **val_Jacobian_ij,
+                                       double **val_Jacobian_ji,
+                                       double **val_Jacobian_jj,
+                                       CConfig *config) {
+
+  
+  unsigned short iDim, jDim, iVar, jVar;
+  double mu_i, mu_j, ktr_i, ktr_j, kve_i, kve_j;
+  double rho, rho_i, rho_j, un;
+  double GdotPhi, GPsiEdotVel, GPsiEdotn, GPsiEvedotn;
+  double dij, theta, thetax, thetay, thetaz, etax, etay, etaz;
+  
+  /*--- Initialize residuals ---*/
+  for (iVar = 0; iVar < nVar; iVar++) {
+    val_residual_i[iVar] = 0.0;
+    val_residual_j[iVar] = 0.0;
+    for (jVar = 0; jVar < nVar; jVar++) {
+      val_Jacobian_ii[iVar][jVar] = 0.0;
+      val_Jacobian_ij[iVar][jVar] = 0.0;
+      val_Jacobian_ji[iVar][jVar] = 0.0;
+      val_Jacobian_jj[iVar][jVar] = 0.0;
+    }
+  }
+  
+  /*--- Calculate geometric quantities ---*/
+  Area = 0.0;
+  dij = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++) {
+    Area += Normal[iDim]*Normal[iDim];
+    dij  += (Coord_j[iDim]-Coord_i[iDim])*(Coord_j[iDim]-Coord_i[iDim]);
+  }
+  Area = sqrt(Area);
+  dij  = sqrt(dij);
+  theta = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++) {
+    UnitNormal[iDim] = Normal[iDim]/Area;
+    theta += UnitNormal[iDim]*UnitNormal[iDim];
+  }
+  thetax = theta + (UnitNormal[0]*UnitNormal[0])/3.0;
+  thetay = theta + (UnitNormal[1]*UnitNormal[1])/3.0;
+  thetaz = theta + (UnitNormal[2]*UnitNormal[2])/3.0;
+  etax   = UnitNormal[1]*UnitNormal[2]/3.0;
+  etay   = UnitNormal[0]*UnitNormal[2]/3.0;
+  etaz   = UnitNormal[0]*UnitNormal[1]/3.0;
+  
+  /*--- Get flow state (Rename for convenience) ---*/
+  mu_i = Laminar_Viscosity_i;
+  mu_j = Laminar_Viscosity_j;
+  ktr_i = Thermal_Conductivity_i;
+  ktr_j = Thermal_Conductivity_j;
+  kve_i = Thermal_Conductivity_ve_i;
+  kve_j = Thermal_Conductivity_ve_j;
+  rho_i = V_i[RHO_INDEX];
+  rho_j = V_j[RHO_INDEX];
+  rho   = 0.5*(rho_i+rho_j);
+  for (iDim = 0; iDim < nDim; iDim++) {
+    vel_i[iDim] = V_i[VEL_INDEX+iDim];
+    vel_j[iDim] = V_j[VEL_INDEX+iDim];
+    vel[iDim] = 0.5*(vel_i[iDim]+vel_j[iDim]);
+  }
+  
+  /*--- Calculate mean gradients ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    Mean_GradPsiE[iDim]   =  0.5*(PsiVar_Grad_i[nSpecies+nDim][iDim] +
+                                  PsiVar_Grad_j[nSpecies+nDim][iDim]  );
+    Mean_GradPsiEve[iDim] = 0.5*(PsiVar_Grad_i[nSpecies+nDim+1][iDim] +
+                                 PsiVar_Grad_j[nSpecies+nDim+1][iDim]  );
+		for (jDim = 0; jDim < nDim; jDim++)
+      Mean_GradPhi[iDim][jDim] =  0.5*(PsiVar_Grad_i[nSpecies+iDim][jDim] +
+                                       PsiVar_Grad_j[nSpecies+iDim][jDim]  );
+  }
+  
+  /*--- Calculate auxiliary quantities for SigmaPhi ---*/
+  GdotPhi     = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++)
+    GdotPhi     += Mean_GradPhi[iDim][iDim];
+  
+  /*--- Project mean gradient of PsiE & PsiEve into normal ---*/
+  GPsiEdotn   = 0.0;
+  GPsiEvedotn = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++) {
+    GPsiEdotn   += Mean_GradPsiE[iDim]*Normal[iDim];
+    GPsiEvedotn += Mean_GradPsiEve[iDim]*Normal[iDim];
+  }
+
+  
+  
+  /*--- Initialize SigmaPhi ---*/
+  for (iDim = 0; iDim < nDim; iDim++)
+    for (jDim = 0; jDim < nDim; jDim++)
+      SigmaPhi[iDim][jDim] = 0.0;
+  
+  /*--- Calculate SigmaPhi ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    for (jDim = 0; jDim < nDim; jDim++) {
+      SigmaPhi[iDim][jDim] += Mean_GradPhi[iDim][jDim] +
+                              Mean_GradPhi[jDim][iDim];
+    }
+    SigmaPhi[iDim][iDim]  -= 2.0/3.0*GdotPhi;
+  }
+  
+  
+  /*---+++ Residual at node i +++---*/
+  
+  // k = 2
+  /*--- Calculate auxiliary quantities for SigmaPsiE ---*/
+  GPsiEdotVel = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++)
+    GPsiEdotVel += Mean_GradPsiE[iDim]*vel_i[iDim];
+  
+  /*--- Initialize SigmaPsiE ---*/
+  for (iDim = 0; iDim < nDim; iDim++)
+    for (jDim = 0; jDim < nDim; jDim++)
+      SigmaPsiE[iDim][jDim] = 0.0;
+  
+  /*--- Calculate SigmaPsiE ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    for (jDim = 0; jDim < nDim; jDim++) {
+      SigmaPsiE[iDim][jDim] += Mean_GradPsiE[iDim]*vel_i[jDim] +
+                               Mean_GradPsiE[jDim]*vel_i[iDim];
+    }
+    SigmaPsiE[iDim][iDim] -= 2.0/3.0*GPsiEdotVel;
+  }
+  
+  /*--- Calculate the k=2 residual at i (SigmaPhi + SigmaPsiE) dot n ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    for (jDim = 0; jDim < nDim; jDim++) {
+      val_residual_i[nSpecies+iDim] += mu_i/rho_i*(SigmaPhi[iDim][jDim] +
+                                                   SigmaPsiE[iDim][jDim]  )
+                                     * Normal[jDim];
+    }
+  }
+  
+  // k = 3
+  /*--- Calculate the k=3 residual at i dT/dU * (GradPsiE dot n) ---*/
+  for (iVar = 0; iVar < nVar; iVar++)
+    val_residual_i[iVar] += ktr_i*dTdU_i[iVar]*GPsiEdotn;
+  
+  // k = 4
+  for (iVar = 0; iVar < nVar; iVar++)
+    val_residual_i[iVar] += kve_i*dTvedU_i[iVar]*(GPsiEvedotn+GPsiEdotn);
+  
+  /*--- Calculate Jacobians for implicit time-stepping ---*/
+  if (implicit) {
+    
+    /*--- Calculate projected velocity at node i ---*/
+    un = 0.0;
+    for (iDim = 0; iDim < nDim; iDim++)
+      un += vel_i[iDim]*UnitNormal[iDim];
+    
+    /*--- Jacobian from k = 2 viscous flux ---*/
+    // x-momentum
+    val_Jacobian_ij[nSpecies][nSpecies]     += mu_i/(rho_i*dij) * thetax * Area;
+    val_Jacobian_ij[nSpecies][nSpecies+1]   += mu_i/(rho_i*dij) * etaz   * Area;
+    val_Jacobian_ij[nSpecies][nSpecies+2]   += mu_i/(rho_i*dij) * etay   * Area;
+    val_Jacobian_ij[nSpecies][nSpecies+3]   += mu_i/(rho_i*dij) *
+                                               (vel_i[0]*theta+un*UnitNormal[0]/3.0)*Area;
+    // y-momentum
+    val_Jacobian_ij[nSpecies+1][nSpecies]   += mu_i/(rho_i*dij) * etaz   * Area;
+    val_Jacobian_ij[nSpecies+1][nSpecies+1] += mu_i/(rho_i*dij) * thetay * Area;
+    val_Jacobian_ij[nSpecies+1][nSpecies+2] += mu_i/(rho_i*dij) * etax   * Area;
+    val_Jacobian_ij[nSpecies+1][nSpecies+3] += mu_i/(rho_i*dij) *
+                                               (vel_i[1]*theta+un*UnitNormal[1]/3.0)*Area;
+    // z-momentum
+    val_Jacobian_ij[nSpecies+2][nSpecies]   += mu_i/(rho_i*dij) * etay   * Area;
+    val_Jacobian_ij[nSpecies+2][nSpecies+1] += mu_i/(rho_i*dij) * etax   * Area;
+    val_Jacobian_ij[nSpecies+2][nSpecies+2] += mu_i/(rho_i*dij) * thetaz * Area;
+    val_Jacobian_ij[nSpecies+2][nSpecies+3] += mu_i/(rho_i*dij) *
+                                               (vel_i[2]*theta+un*UnitNormal[2]/3.0)*Area;
+    
+    /*--- Jacobian from k = 3 viscous flux ---*/
+    for (iVar = 0; iVar < nVar; iVar++)
+      val_Jacobian_ij[iVar][nSpecies+nDim] += ktr_i*dTdU_i[iVar]*theta*Area;
+    
+    /*--- Jacobian from k = 4 viscous flux ---*/
+    for (iVar = 0; iVar < nVar; iVar++) {
+      val_Jacobian_ij[iVar][nSpecies+nDim]   += kve_i*dTvedU_i[iVar]*theta*Area;
+      val_Jacobian_ij[iVar][nSpecies+nDim+1] += kve_i*dTvedU_i[iVar]*theta*Area;
+    }
+    
+
+    for (iVar = 0; iVar < nVar; iVar++)
+      for (jVar = 0; jVar < nVar; jVar++)
+        val_Jacobian_ii[iVar][jVar] = -val_Jacobian_ij[iVar][jVar];
+  }
+  
+  /*---+++ Residual at node j +++---*/
+  
+  //k = 2
+  /*--- Calculate auxiliary quantities for SigmaPsiE ---*/
+  GPsiEdotVel = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++)
+    GPsiEdotVel += Mean_GradPsiE[iDim]*vel_j[iDim];
+  
+  /*--- Initialize SigmaPsiE ---*/
+  for (iDim = 0; iDim < nDim; iDim++)
+    for (jDim = 0; jDim < nDim; jDim++)
+      SigmaPsiE[iDim][jDim] = 0.0;
+  
+  /*--- Calculate SigmaPsiE ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    for (jDim = 0; jDim < nDim; jDim++) {
+      SigmaPsiE[iDim][jDim] += Mean_GradPsiE[iDim]*vel_j[jDim] +
+                               Mean_GradPsiE[jDim]*vel_j[iDim];
+    }
+    SigmaPsiE[iDim][iDim] -= 2.0/3.0*GPsiEdotVel;
+  }
+  
+  /*--- Calculate the residual at j (SigmaPhi + SigmaPsiE) dot n ---*/
+  for (iDim = 0; iDim < nDim; iDim++) {
+    for (jDim = 0; jDim < nDim; jDim++) {
+      val_residual_j[nSpecies+iDim] += mu_j/rho_j*(SigmaPhi[iDim][jDim] +
+                                                   SigmaPsiE[iDim][jDim]  )
+                                     * Normal[jDim];
+    }
+  }
+  
+  // k = 3
+  /*--- Calculate the k=3 residual at j dT/dU * (GradPsiE dot n) ---*/
+  for (iVar = 0; iVar < nVar; iVar++)
+    val_residual_j[iVar] += ktr_j*dTdU_j[iVar]*GPsiEdotn;
+  
+  
+  // k = 4
+  /*--- Calculate the k=4 residual at j ---*/
+  for (iVar = 0; iVar < nVar; iVar++)
+    val_residual_j[iVar] += kve_j*dTvedU_j[iVar]*(GPsiEvedotn+GPsiEdotn);
+  
+  
+  /*--- Calculate Jacobians for implicit time-stepping ---*/
+  if (implicit) {
+    
+    /*--- Calculate projected velocity at node i ---*/
+    un = 0.0;
+    for (iDim = 0; iDim < nDim; iDim++)
+      un += vel_j[iDim]*UnitNormal[iDim];
+    
+    /*--- Jacobian from k = 2 viscous flux ---*/
+    // x-momentum
+    val_Jacobian_jj[nSpecies][nSpecies]     += mu_j/(rho_j*dij) * thetax * Area;
+    val_Jacobian_jj[nSpecies][nSpecies+1]   += mu_j/(rho_j*dij) * etaz   * Area;
+    val_Jacobian_jj[nSpecies][nSpecies+2]   += mu_j/(rho_j*dij) * etay   * Area;
+    val_Jacobian_jj[nSpecies][nSpecies+3]   += mu_j/(rho_j*dij) *
+                                               (vel_j[0]*theta+un*UnitNormal[0]/3.0)*Area;
+    // y-momentum
+    val_Jacobian_jj[nSpecies+1][nSpecies]   += mu_j/(rho_j*dij) * etaz   * Area;
+    val_Jacobian_jj[nSpecies+1][nSpecies+1] += mu_j/(rho_j*dij) * thetay * Area;
+    val_Jacobian_jj[nSpecies+1][nSpecies+2] += mu_j/(rho_j*dij) * etax   * Area;
+    val_Jacobian_jj[nSpecies+1][nSpecies+3] += mu_j/(rho_j*dij) *
+                                               (vel_j[1]*theta+un*UnitNormal[1]/3.0)*Area;
+    // z-momentum
+    val_Jacobian_jj[nSpecies+2][nSpecies]   += mu_j/(rho_j*dij) * etay   * Area;
+    val_Jacobian_jj[nSpecies+2][nSpecies+1] += mu_j/(rho_j*dij) * etax   * Area;
+    val_Jacobian_jj[nSpecies+2][nSpecies+2] += mu_j/(rho_j*dij) * thetaz * Area;
+    val_Jacobian_jj[nSpecies+2][nSpecies+3] += mu_j/(rho_j*dij) *
+                                               (vel_j[2]*theta+un*UnitNormal[2]/3.0)*Area;
+    
+    /*--- Jacobian from k = 3 viscous flux ---*/
+    for (iVar = 0; iVar < nVar; iVar++)
+      val_Jacobian_jj[iVar][nSpecies+nDim] += ktr_j*dTdU_j[iVar]*theta*Area;
+    
+    /*--- Jacobian from k = 4 viscous flux ---*/
+    for (iVar = 0; iVar < nVar; iVar++) {
+      val_Jacobian_jj[iVar][nSpecies+nDim]   += kve_j*dTvedU_j[iVar]*theta*Area;
+      val_Jacobian_jj[iVar][nSpecies+nDim+1] += kve_j*dTvedU_j[iVar]*theta*Area;
+    }
+    
+    for (iVar = 0; iVar < nVar; iVar++)
+      for (jVar = 0; jVar < nVar; jVar++)
+        val_Jacobian_ji[iVar][jVar] = -val_Jacobian_ij[iVar][jVar];
+  }
+}
+
 
 CSource_AdjTNE2::CSource_AdjTNE2(unsigned short val_nDim,
                                  unsigned short val_nVar,

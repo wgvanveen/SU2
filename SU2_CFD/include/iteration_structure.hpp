@@ -3,7 +3,7 @@
  * \brief Headers of the main subroutines used by SU2_CFD.
  *        The subroutines and functions are in the <i>definition_structure.cpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -23,8 +23,8 @@
 
 #pragma once
 
-#ifndef NO_MPI
-#include <mpi.h>
+#ifdef HAVE_MPI
+  #include "mpi.h"
 #endif
 #include <ctime>
 
@@ -48,7 +48,7 @@ using namespace std;
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void MeanFlowIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container, 
@@ -65,7 +65,7 @@ void MeanFlowIteration(COutput *output, CIntegration ***integration_container, C
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void TNE2Iteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container,
@@ -82,7 +82,7 @@ void TNE2Iteration(COutput *output, CIntegration ***integration_container, CGeom
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void FluidStructureIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container, 
@@ -99,7 +99,7 @@ void FluidStructureIteration(COutput *output, CIntegration ***integration_contai
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void WaveIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container, 
@@ -116,7 +116,7 @@ void WaveIteration(COutput *output, CIntegration ***integration_container, CGeom
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void HeatIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container,
@@ -133,7 +133,7 @@ void HeatIteration(COutput *output, CIntegration ***integration_container, CGeom
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void PoissonIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container,
@@ -150,7 +150,7 @@ void PoissonIteration(COutput *output, CIntegration ***integration_container, CG
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void FEAIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container, 
@@ -167,7 +167,7 @@ void FEAIteration(COutput *output, CIntegration ***integration_container, CGeome
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void AdjMeanFlowIteration(COutput *output, CIntegration ***integration_container, CGeometry ***geometry_container, 
@@ -184,7 +184,7 @@ void AdjMeanFlowIteration(COutput *output, CIntegration ***integration_container
  * \param[in] config_container - Definition of the particular problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] ExtIter - Current physical time iteration number.
  */
 void AdjTNE2Iteration(COutput *output, CIntegration ***integration_container,
@@ -206,12 +206,23 @@ void AdjTNE2Iteration(COutput *output, CIntegration ***integration_container,
 void SetWind_GustField(CConfig *config_container, CGeometry **geometry_container, CSolver ***solver_container);
 
 /*!
+ * \brief Reads and initializes the vortex positions, strengths and gradient.
+ * \author S. Padron
+ * \param[in] nVortex - number of vortices.
+ * \param[in] x0 - Vector of x-loc of the vortices.
+ * \param[in] y0 - Vector of y-loc of the vortices.
+ * \param[in] vort_strength - Vector of vortex strengths.
+ * \param[in] r_core - Vector of vortex core size.
+ */
+void InitializeVortexDistribution(unsigned long &nVortex, vector<double>& x0,vector<double>& y0,vector<double>& vort_strength,vector<double>& r_core);
+
+/*!
  * \brief Updates the positions and grid velocities for dynamic meshes between physical time steps.
  * \author T. Economon
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] surface_movement - Surface movement classes of the problem.
  * \param[in] grid_movement - Volume grid movement classes of the problem.
- * \param[in] FFDBox - FFD FFDBoxs of the problem.
+ * \param[in] FFDBox - FFD FFDBoxes of the problem.
  * \param[in] solver_container - Container vector with all the solutions.
  * \param[in] config - Definition of the particular problem.
  * \param[in] iZone - Index of the zone.
@@ -235,8 +246,16 @@ void SetTimeSpectral(CGeometry ***geometry_container, CSolver ****solver_contain
 		CConfig **config_container, unsigned short nZone, unsigned short iZone);
 
 /*!
+ * \brief Computation of the Time-Spectral operator matrix.
+ * \author K. Naik
+ * \param[in] D - double pointer to the operator matrix.
+ * \param[in] nZone - Total number of zones (periodic instances).
+ */
+void ComputeTimeSpectral_Operator(double **D, double period, unsigned short nZone);
+
+/*!
  * \brief Computation and storage of the time-spectral mesh velocities.
- * \author T. Economon, K. Naik
+ * \author K. Naik, T. Economon
  * \param[in] geometry - Geometrical definition of the problem.
  * \param[in] config - Definition of the particular problem.
  * \param[in] nZone - Total number of zones (periodic instances).

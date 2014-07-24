@@ -2,7 +2,7 @@
  * \file dual_grid_structure.inl
  * \brief In-Line subroutines of the <i>dual_grid_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -22,16 +22,23 @@
 
 #pragma once
 
-inline void CPoint::SetElem(unsigned long val_elem) { 
-	Elem.push_back(val_elem); 
-	nElem = Elem.size();
-}
+inline void CPoint::SetElem(unsigned long val_elem) { Elem.push_back(val_elem); nElem = Elem.size(); }
+
+inline void CPoint::ResetBoundary(void) { if (vertex != NULL) delete [] vertex; Boundary = false; }
+
+inline void CPoint::ResetElem(void) { Elem.clear(); nElem = 0; }
+
+inline void CPoint::ResetPoint(void) { Point.clear(); Edge.clear(); nPoint = 0; }
 
 inline double CPoint::GetCoord(unsigned short val_dim) { return coord[val_dim]; }
 
 inline double *CPoint::GetCoord(void) { return coord; }
 
+inline bool CPoint::GetFlip_Orientation(void) { return Flip_Orientation; }
+
 inline void CPoint::SetCoord(unsigned short val_dim, double val_coord) { coord[val_dim] = val_coord; }
+
+inline void CPoint::SetFlip_Orientation(void) { Flip_Orientation = true; }
 
 inline void CPoint::AddCoord(unsigned short val_dim, double val_coord) { coord[val_dim] += val_coord; }
 
@@ -67,6 +74,10 @@ inline void CPoint::SetBoundary(bool val_boundary) { Boundary = val_boundary; }
 inline void CPoint::SetPhysicalBoundary(bool val_boundary) { PhysicalBoundary = val_boundary; }
 
 inline bool CPoint::GetPhysicalBoundary(void) { return PhysicalBoundary; }
+
+inline void CPoint::SetSolidBoundary(bool val_boundary) { SolidBoundary = val_boundary; }
+
+inline bool CPoint::GetSolidBoundary(void) { return SolidBoundary; }
 
 inline void CPoint::AddVolume (double val_Volume) { Volume[0] += val_Volume; }
 
@@ -177,21 +188,27 @@ inline unsigned short CPoint::GetColor(void) { return color; }
 
 inline unsigned long CPoint::GetGlobalIndex(void) { return GlobalIndex; }
 
+inline void CPoint::SetGlobalIndex(unsigned long val_globalindex) { GlobalIndex = val_globalindex; }
+
 inline void CPoint::SetDomain(bool val_domain) { Domain = val_domain; }
 
 inline bool CPoint::GetDomain(void) { return Domain; }
 
 inline void CPoint::SetWall_Distance(double val_distance) { Wall_Distance = val_distance; }
 
+inline void CPoint::SetCurvature(double val_curvature) { Curvature = val_curvature; }
+
 inline void CPoint::SetSharpEdge_Distance(double val_distance) { SharpEdge_Distance = val_distance; }
 
 inline double CPoint::GetWall_Distance(void) { return Wall_Distance; }
 
+inline double CPoint::GetCurvature(void) { return Curvature; }
+
 inline double CPoint::GetSharpEdge_Distance(void) { return SharpEdge_Distance; }
 
-inline void CPoint::SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG, CConfig *config) { }
+inline void CPoint::SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG) { }
 
-inline void CPoint::SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG, CConfig *config) { }
+inline void CPoint::SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG) { }
 
 inline void  CPoint::GetNormal(double *val_normal) { }
 
@@ -243,7 +260,9 @@ inline double *CVertex::GetNormal(void) { return Normal; }
 
 inline double *CVertex::GetVarCoord(void) { return VarCoord; }
 
-inline double *CVertex::GetCoord(void) { return CarCoord; }
+inline double *CVertex::GetCoord(void) { return CartCoord; }
+
+inline double CVertex::GetCoord(unsigned short val_dim) { return CartCoord[val_dim]; }
 
 inline void CVertex::SetAuxVar(double val_auxvar) { Aux_Var = val_auxvar; }
 
@@ -273,7 +292,7 @@ inline void CVertex::AddVarCoord(double *val_varcoord) {
 
 inline void CVertex::SetCoord(double *val_coord) { 
 	for (unsigned short iDim = 0; iDim < nDim; iDim++) 
-		CarCoord[iDim] = val_coord[iDim];
+		CartCoord[iDim] = val_coord[iDim];
 }
 
 inline void CVertex::SetRotation_Type(short val_rotation_type) { Rotation_Type = val_rotation_type; }
@@ -292,6 +311,8 @@ inline void CVertex::SetDonorElem(long val_donorelem) { Donor_Elem = val_donorel
 inline long CVertex::GetDonorElem(void) { return Donor_Elem; }
 
 inline long CVertex::GetDonorPoint(void) { return PeriodicPoint[0]; }
+
+inline long CVertex::GetDonorProcessor(void) { return PeriodicPoint[1]; }
 
 inline void CVertex::SetBasisFunction(unsigned short val_node, double val_basis) { Basis_Function[val_node] = val_basis; }
 

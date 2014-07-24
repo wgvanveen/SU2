@@ -5,7 +5,7 @@
  *        technique definition). The subroutines and functions are in 
  *        the <i>grid_movement_structure.cpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -25,17 +25,20 @@
 
 #pragma once
 
-#include "geometry_structure.hpp"
-#include "config_structure.hpp"
-#include "matrix_structure.hpp"
-#include "vector_structure.hpp"
-#include "linear_solvers_structure.hpp"
-
+#ifdef HAVE_MPI
+  #include "mpi.h"
+#endif
 #include <iostream>
 #include <cstdlib>
 #include <fstream>
 #include <cmath>
 #include <ctime>
+
+#include "geometry_structure.hpp"
+#include "config_structure.hpp"
+#include "matrix_structure.hpp"
+#include "vector_structure.hpp"
+#include "linear_solvers_structure.hpp"
 
 using namespace std;
 
@@ -44,7 +47,7 @@ using namespace std;
  * \brief Class for moving the surface and volumetric 
  *        numerical grid (2D and 3D problems).
  * \author F. Palacios.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CGridMovement {
 public:
@@ -73,27 +76,29 @@ public:
  * \class CFreeFormDefBox
  * \brief Class for defining the free form FFDBox structure.
  * \author F. Palacios & A. Galdran.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CFreeFormDefBox : public CGridMovement {
 public:
-	unsigned short nDim;						/*!< \brief Number of dimensions of the problem. */
-	unsigned short nCornerPoints,		/*!< \brief Number of corner points of the FFDBox. */
-	nControlPoints;									/*!< \brief Number of control points of the FFDBox. */
+	unsigned short nDim;                  /*!< \brief Number of dimensions of the problem. */
+	unsigned short nCornerPoints,         /*!< \brief Number of corner points of the FFDBox. */
+	nControlPoints, nControlPoints_Copy;  /*!< \brief Number of control points of the FFDBox. */
 	double **Coord_Corner_Points,		/*!< \brief Coordinates of the corner points. */
 	****Coord_Control_Points,				/*!< \brief Coordinates of the control points. */
 	****ParCoord_Control_Points,		/*!< \brief Coordinates of the control points. */
 	****Coord_Control_Points_Copy,	/*!< \brief Coordinates of the control points (copy). */
 	****Coord_SupportCP;						/*!< \brief Coordinates of the support control points. */
-	unsigned short lOrder,	/*!< \brief Order of the FFDBox in the i direction. */
-	mOrder,									/*!< \brief Order of the FFDBox in the j direction. */
-	nOrder;									/*!< \brief Order of the FFDBox in the k direction. */
-	unsigned short lDegree, /*!< \brief Degree of the FFDBox in the i direction. */
-	mDegree,								/*!< \brief Degree of the FFDBox in the j direction. */
-	nDegree;								/*!< \brief Degree of the FFDBox in the k direction. */
-	double *param_coord, *param_coord_,	/*!< \brief Parametric coordinates of a point. */
+	unsigned short lOrder, lOrder_Copy,	/*!< \brief Order of the FFDBox in the i direction. */
+	mOrder,	mOrder_Copy, 								/*!< \brief Order of the FFDBox in the j direction. */
+	nOrder, nOrder_Copy;									/*!< \brief Order of the FFDBox in the k direction. */
+	unsigned short lDegree, lDegree_Copy, /*!< \brief Degree of the FFDBox in the i direction. (lOrder - 1)*/
+	mDegree, mDegree_Copy,								/*!< \brief Degree of the FFDBox in the j direction. (mOrder - 1)*/
+	nDegree, nDegree_Copy;								/*!< \brief Degree of the FFDBox in the k direction. (nOrder - 1)*/
+	double *ParamCoord, *ParamCoord_,	/*!< \brief Parametric coordinates of a point. */
 	*cart_coord, *cart_coord_;			/*!< \brief Cartesian coordinates of a point. */
-	double *gradient;			/*!< \brief Gradient of the point inversion process. */
+  double ObjFunc;			/*!< \brief Objective function of the point inversion process. */
+	double *Gradient;			/*!< \brief Gradient of the point inversion process. */
+  double **Hessian;    /*!< \brief Hessian of the point inversion process. */
 	double MaxCoord[3];		/*!< \brief Maximum coordinates of the FFDBox. */
 	double MinCoord[3];		/*!< \brief Minimum coordinates of the FFDBox. */
 	string Tag;						/*!< \brief Tag to identify the FFDBox. */
@@ -158,13 +163,13 @@ public:
 	void Set_ParametricCoord(double *val_coord);
 	
 	/*! 
-	 * \brief Add to the vector of parent FFDBoxs a new FFD FFDBox.
+	 * \brief Add to the vector of parent FFDBoxes a new FFD FFDBox.
 	 * \param[in] val_iParentFFDBox - New parent FFDBox in the vector.
 	 */	
 	void SetParentFFDBox(string val_iParentFFDBox);
 	
 	/*! 
-	 * \brief Add to the vector of child FFDBoxs a new FFD FFDBox.
+	 * \brief Add to the vector of child FFDBoxes a new FFD FFDBox.
 	 * \param[in] val_iChildFFDBox - New child FFDBox in the vector.
 	 */	
 	void SetChildFFDBox(string val_iChildFFDBox);
@@ -277,6 +282,12 @@ public:
 	 * \return Number of control points.
 	 */	
 	unsigned short GetnControlPoints(void);
+  
+  /*!
+	 * \brief Get the number of control points.
+	 * \return Number of control points.
+	 */
+	void SetnControlPoints(void);
 	
 	/*! 
 	 * \brief Get the number of numerical points on the surface.
@@ -313,6 +324,15 @@ public:
 	 * \param[in] kDegree - Index of the FFDBox, k direction.
 	 */	
 	void SetCoordControlPoints(double *val_coord, unsigned short iDegree, unsigned short jDegree, unsigned short kDegree);	
+
+  /*!
+	 * \brief Set the coordinates of the control points.
+	 * \param[in] val_coord - Coordinates of the control point.
+	 * \param[in] iDegree - Index of the FFDBox, i direction.
+	 * \param[in] jDegree - Index of the FFDBox, j direction.
+	 * \param[in] kDegree - Index of the FFDBox, k direction.
+	 */
+	void SetCoordControlPoints_Copy(double *val_coord, unsigned short iDegree, unsigned short jDegree, unsigned short kDegree);
 
 	/*! 
 	 * \brief Set the coordinates of the control points.
@@ -381,10 +401,10 @@ public:
 	
 	/*! 
 	 * \brief Set the tecplot file of the FFD chuck structure.
-	 * \param[in] FFDBox_filename - Name of the output file with the FFD FFDBox structure.
-	 * \param[in] new_file - New file or add to the existing file.
+	 * \param[in] iFFDBox - Index of the FFD box.
+	 * \param[in] original - Original box (before deformation).
 	 */		
-	void SetTecplot(char FFDBox_filename[200], bool new_file);
+	void SetTecplot(CGeometry *geometry, unsigned short iFFDBox, bool original);
 	
 	/*! 
 	 * \brief Set the cartesian coords of a point in R^3 and convert them to the parametric coords of
@@ -423,11 +443,11 @@ public:
 	
 	/*! 
 	 * \brief Here we take the parametric coords of a point in the box and we convert them to the 
-	 *        physical cartesian coords by plugging the param_coords on the Bezier parameterization of our box.
-	 * \param[in] param_coord - Parametric coordinates of a point.
+	 *        physical cartesian coords by plugging the ParamCoords on the Bezier parameterization of our box.
+	 * \param[in] ParamCoord - Parametric coordinates of a point.
 	 * \return Pointer to the cartesian coordinates of a point.
 	 */		
-	double *EvalCartesianCoord(double *param_coord);
+	double *EvalCartesianCoord(double *ParamCoord);
 	
 	/*! 
 	 * \brief Set the Bernstein polynomial, defined as B_i^n(t) = Binomial(n,i)*t^i*(1-t)^(n-i).
@@ -445,23 +465,7 @@ public:
 	 * \param[in] m - Lower coefficient.
 	 * \return Value of the binomial coefficient n over m.
 	 */		
-	unsigned short Binomial(unsigned short n, unsigned short m);
-	
-	/*! 
-	 * \brief Get the binomial (optimized) coefficient n over m, defined as n!/(m!(n-m)!)
-	 * \note If the denominator is 0, the value is 1.
-	 * \param[in] n - Upper coefficient.
-	 * \param[in] m - Lower coefficient.
-	 * \return Value of the binomial coefficient n over m.
-	 */		
-	unsigned long BinomialOpt(unsigned long n, unsigned long m);
-
-	/*! 
-	 * \brief The Factorial Number n! is defined as n!=n*(n-1)*...*2*1.
-	 * \param[in] n - Index of the factorial.
-	 * \return Value of the factorial.
-	 */		
-	unsigned short Factorial(unsigned short n);
+	unsigned long Binomial(unsigned short n, unsigned short m);
 	
 	/*! 
 	 * \brief Get the order in the l direction of the FFD FFDBox.
@@ -480,6 +484,24 @@ public:
 	 * \return Order in the n direction of the FFD FFDBox.
 	 */		
 	unsigned short GetnOrder(void);
+  
+  /*!
+	 * \brief Get the order in the l direction of the FFD FFDBox.
+	 * \return Order in the l direction of the FFD FFDBox.
+	 */
+	void SetlOrder(unsigned short val_lOrder);
+	
+	/*!
+	 * \brief Get the order in the m direction of the FFD FFDBox.
+	 * \return Order in the m direction of the FFD FFDBox.
+	 */
+	void SetmOrder(unsigned short val_mOrder);
+	
+	/*!
+	 * \brief Get the order in the n direction of the FFD FFDBox.
+	 * \return Order in the n direction of the FFD FFDBox.
+	 */
+	void SetnOrder(unsigned short val_nOrder);
 	
 	/*! 
 	 * \brief Set, at each vertex, the index of the free form FFDBox that contains the vertex.
@@ -509,22 +531,33 @@ public:
 	 */		
 	double GetBernsteinDerivative(short val_n, short val_i, double val_t, short val_order);
 	
+  /*!
+	 * \brief The routine computes F(u,v,w)=||X(u,v,w)-(x,y,z)||^2  evaluated at (u,v,w).
+	 * \param[in] val_coord - Parametric coordiates of the target point.
+	 * \param[in] xyz - Cartesians coordinates of the point.
+	 * \return Value of the analytical objective function.
+	 */
+	double GetFFDObjFunc(double *val_coord, double *xyz);
+  
 	/*! 
 	 * \brief The routine computes the gradient of F(u,v,w)=||X(u,v,w)-(x,y,z)||^2  evaluated at (u,v,w).
 	 * \param[in] val_coord - Parametric coordiates of the target point.
 	 * \param[in] xyz - Cartesians coordinates of the point.
+   * \param[in] analytical - Compute the analytical gradient.
 	 * \return Value of the analytical gradient.
 	 */		
-	double *GetGradient_Analytical(double *val_coord, double *xyz);
+	double *GetFFDGradient(double *val_coord, double *xyz);
 	
-	/*! 
-	 * \brief The routine computes the numerical gradient of F(u,v,w)=||X(u,v,w)-(x,y,z)||^2  evaluated at (u,v,w).
+	/*!
+	 * \brief The routine that computes the Hessian of F(u,v,w)=||X(u,v,w)-(x,y,z)||^2 evaluated at (u,v,w)
+	 *        Input: (u,v,w), (x,y,z)
+	 *        Output: Hessian F (u,v,w).
 	 * \param[in] uvw - Current value of the parametrics coordinates.
 	 * \param[in] xyz - Cartesians coordinates of the target point to compose the functional.
-	 * \return Value of the numerical gradient.
-	 */		
-	double *GetGradient_Numerical(double *uvw, double *xyz);
-	
+	 * \param[in] val_Hessian - Value of the hessian.
+	 */
+	void GetFFDHessian(double *uvw, double *xyz, double **val_Hessian);
+  
 	/*! 
 	 * \brief An auxiliary routine to help us compute the gradient of F(u,v,w)=||X(u,v,w)-(x,y,z)||^2 = 
 	 *        (Sum_ijk^lmn P1_ijk Bi Bj Bk -x)^2+(Sum_ijk^lmn P2_ijk Bi Bj Bk -y)^2+(Sum_ijk^lmn P3_ijk Bi Bj Bk -z)^2
@@ -605,29 +638,11 @@ public:
 						  unsigned short *lmn);
 	
 	/*! 
-	 * \brief The routine that computes the Hessian of F(u,v,w)=||X(u,v,w)-(x,y,z)||^2 evaluated at (u,v,w)
-	 *        Input: (u,v,w), (x,y,z)
-	 *        Output: Hessian F (u,v,w).
-	 * \param[in] uvw - Current value of the parametrics coordinates.
-	 * \param[in] xyz - Cartesians coordinates of the target point to compose the functional.
-	 * \param[in] val_Hessian - Value of the hessian.
-	 */		
-	void GetHessian_Analytical(double *uvw, double *xyz, double **val_Hessian);
-	
-	/*! 
 	 * \brief Euclidean norm of a vector.
 	 * \param[in] a - _______.
 	 * \return __________.
 	 */		
 	double GetNorm(double *a);
-	
-	/*! 
-	 * \brief Gauss method for solving a linear system.
-	 * \param[in] A - __________.
-	 * \param[in] rhs - __________.
-	 * \param[in] nVar - __________.
-	 */		
-	void Gauss_Elimination(double** A, double* rhs, unsigned short nVar);
 	
 	/*! 
 	 * \brief Set the tag that identify a FFDBox.
@@ -652,13 +667,22 @@ public:
 	 * \return Value of the nested level of the the FFDBox.
 	 */	
 	unsigned short GetLevel(void);
+  
+  /*!
+	 * \brief Compute the determinant of a 3 by 3 matrix.
+	 * \param[in] val_matrix 3 by 3 matrix.
+	 * \result Determinant of the matrix
+	 */
+	double Determinant_3x3(double A00, double A01, double A02, double A10, double A11,
+                         double A12, double A20, double A21, double A22);
+  
 };
 
 /*! 
  * \class CVolumetricMovement
  * \brief Class for moving the volumetric numerical grid.
  * \author F. Palacios, A. Bueno, T. Economon, S. Padron.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CVolumetricMovement : public CGridMovement {
 protected:
@@ -719,7 +743,7 @@ public:
    * \param[in] StiffMatrix_Elem - Element stiffness matrix to be filled.
 	 * \param[in] CoordCorners[8][3] - Index value for Node 1 of the current hexahedron.
 	 */
-  bool SetFEA_StiffMatrix3D(CGeometry *geometry, CConfig *config, double **StiffMatrix_Elem, double CoordCorners[8][3], unsigned short nNodes, double scale);
+  void SetFEA_StiffMatrix3D(CGeometry *geometry, CConfig *config, double **StiffMatrix_Elem, unsigned long PointCorners[8], double CoordCorners[8][3], unsigned short nNodes, double scale);
 	
   /*!
 	 * \brief Build the stiffness matrix for a 3-D hexahedron element. The result will be placed in StiffMatrix_Elem.
@@ -727,7 +751,7 @@ public:
    * \param[in] StiffMatrix_Elem - Element stiffness matrix to be filled.
 	 * \param[in] CoordCorners[8][3] - Index value for Node 1 of the current hexahedron.
 	 */
-  bool SetFEA_StiffMatrix2D(CGeometry *geometry, CConfig *config, double **StiffMatrix_Elem, double CoordCorners[8][3], unsigned short nNodes, double scale);
+  void SetFEA_StiffMatrix2D(CGeometry *geometry, CConfig *config, double **StiffMatrix_Elem, unsigned long PointCorners[8], double CoordCorners[8][3], unsigned short nNodes, double scale);
   
   /*!
 	 * \brief Shape functions and derivative of the shape functions
@@ -842,6 +866,13 @@ public:
 	 */
 	double Check_Grid(CGeometry *geometry);
   
+  /*!
+	 * \brief Compute the minimum distance to the nearest deforming surface.
+	 * \param[in] geometry - Geometrical definition of the problem.
+   * \param[in] config - Definition of the particular problem.
+	 */
+  void ComputeDeforming_Wall_Distance(CGeometry *geometry, CConfig *config);
+  
 	/*!
 	 * \brief Check the boundary vertex that are going to be moved.
 	 * \param[in] geometry - Geometrical definition of the problem.
@@ -913,13 +944,13 @@ public:
  * \class CSurfaceMovement
  * \brief Class for moving the surface numerical grid.
  * \author F. Palacios, T. Economon.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CSurfaceMovement : public CGridMovement {
 protected:
   CFreeFormDefBox** FFDBox;	/*!< \brief Definition of the Free Form Deformation Box. */
-	unsigned short nFFDBox;	/*!< \brief Number of FFD FFDBoxs. */
-	unsigned short nLevel;	/*!< \brief Level of the FFD FFDBoxs (parent/child). */
+	unsigned short nFFDBox;	/*!< \brief Number of FFD FFDBoxes. */
+	unsigned short nLevel;	/*!< \brief Level of the FFD FFDBoxes (parent/child). */
 	bool FFDBoxDefinition;	/*!< \brief If the FFD FFDBox has been defined in the input file. */
 
 public:
@@ -1121,7 +1152,7 @@ public:
 	 *        in the free form FFDBox.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 */		
 	void SetParametricCoord(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox);
 	
@@ -1130,7 +1161,7 @@ public:
 	 *        in the free form FFDBox.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 */		
 	void UpdateParametricCoord(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox);
 	
@@ -1154,87 +1185,117 @@ public:
 	 * \brief Recompute the cartesian coordinates using the control points position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 */		
 	void SetCartesianCoord(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox);
 	
+  /*!
+	 * \brief Set the deformation of the Free From box using the control point position.
+	 * \param[in] geometry - Geometrical definition of the problem.
+	 * \param[in] config - Definition of the particular problem.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
+	 * \param[in] iDV - Index of the design variable.
+	 * \param[in] ResetDef - Reset the deformation before starting a new one.
+	 */
+	void SetFFDCPChange_2D(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
+  
 	/*! 
 	 * \brief Set the deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDCPChange(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDCPChange(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
+  /*!
+	 * \brief Set a camber deformation of the Free From box using the control point position.
+	 * \param[in] geometry - Geometrical definition of the problem.
+	 * \param[in] config - Definition of the particular problem.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
+	 * \param[in] iDV - Index of the design variable.
+	 * \param[in] ResetDef - Reset the deformation before starting a new one.
+	 */
+	void SetFFDCamber_2D(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
+	
+	/*!
+	 * \brief Set a thickness deformation of the Free From box using the control point position.
+	 * \param[in] geometry - Geometrical definition of the problem.
+	 * \param[in] config - Definition of the particular problem.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
+	 * \param[in] iDV - Index of the design variable.
+	 * \param[in] ResetDef - Reset the deformation before starting a new one.
+	 */
+	void SetFFDThickness_2D(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
+  
 	/*! 
 	 * \brief Set a camber deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDCamber(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDCamber(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
 	/*! 
 	 * \brief Set a thickness deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDThickness(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
-	
-	/*! 
-	 * \brief Set a volume deformation of the Free From box using the control point position.
-	 * \param[in] geometry - Geometrical definition of the problem.
-	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
-	 * \param[in] iDV - Index of the design variable.
-	 * \param[in] ResetDef - Reset the deformation before starting a new one.
-	 */		
-	void SetFFDVolume(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDThickness(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
 	/*! 
 	 * \brief Set a dihedral angle deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDDihedralAngle(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDDihedralAngle(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
 	/*! 
 	 * \brief Set a twist angle deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDTwistAngle(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDTwistAngle(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
 	/*! 
 	 * \brief Set a rotation angle deformation of the Free From box using the control point position.
 	 * \param[in] geometry - Geometrical definition of the problem.
 	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] iDV - Index of the design variable.
 	 * \param[in] ResetDef - Reset the deformation before starting a new one.
 	 */		
-	void SetFFDRotation(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iFFDBox, unsigned short iDV, bool ResetDef);
+	void SetFFDRotation(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
 	
+  /*!
+	 * \brief Set a rotation angle deformation in a control surface of the Free From box using the control point position.
+	 * \param[in] geometry - Geometrical definition of the problem.
+	 * \param[in] config - Definition of the particular problem.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
+	 * \param[in] iDV - Index of the design variable.
+	 * \param[in] ResetDef - Reset the deformation before starting a new one.
+	 */
+	void SetFFDControl_Surface(CGeometry *geometry, CConfig *config, CFreeFormDefBox *FFDBox, unsigned short iDV, bool ResetDef);
+  
 	/*! 
 	 * \brief Read the free form information from the grid input file.
 	 * \note If there is no control point information, and no parametric 
 	 *       coordinates information, the code will compute that information.
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] geometry - Geometrical definition of the problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] val_mesh_filename - Name of the grid input file.
    * \param[in] val_vertex - With vertex information.
 	 */		
@@ -1244,7 +1305,7 @@ public:
 	 * \brief Write the Free Form information in the SU2 file.
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] geometry - Geometrical definition of the problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] val_mesh_filename - Name of the grid output file.
 	 */		
 	void WriteFFDInfo(CGeometry *geometry, CConfig *config, string val_mesh_filename);
@@ -1253,7 +1314,7 @@ public:
 	 * \brief Write the Free Form information in the SU2 file.
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] geometry - Geometrical definition of the problem.
-	 * \param[in] FFDBox - Array with all the free forms FFDBoxs of the computation.
+	 * \param[in] FFDBox - Array with all the free forms FFDBoxes of the computation.
 	 * \param[in] val_mesh_filename - Name of the grid output file.
 	 */
 	void WriteFFDInfo(CGeometry *geometry, CConfig *config, CFreeFormDefBox **FFDBox, string val_mesh_filename);
@@ -1266,8 +1327,8 @@ public:
 	bool GetFFDBoxDefinition(void);
 	
 	/*! 
-	 * \brief Obtain the number of FFDBoxs.
-	 * \return Number of FFD FFDBoxs.
+	 * \brief Obtain the number of FFDBoxes.
+	 * \return Number of FFD FFDBoxes.
 	 */		
 	unsigned short GetnFFDBox(void);
 	

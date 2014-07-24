@@ -2,7 +2,7 @@
  * \file numerics_structure.inl
  * \brief In-Line subroutines of the <i>numerics_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -128,6 +128,11 @@ inline void CNumerics::SetConservative_ZeroOrder(double *val_u_i, double *val_u_
 inline void CNumerics::SetPrimitive(double *val_v_i, double *val_v_j) {
 	V_i = val_v_i;
 	V_j = val_v_j;
+}
+
+inline void CNumerics::SetSecondary(double *val_s_i, double *val_s_j) {
+  S_i = val_s_i;
+  S_j = val_s_j;
 }
 
 inline void CNumerics::SetConservative(double *val_u_0, double *val_u_1, double *val_u_2) {
@@ -415,8 +420,6 @@ inline double CSourcePieceWise_TurbML::GetDestruction(void) { return Destruction
 inline double CSourcePieceWise_TurbML::GetCrossProduction(void) { return CrossProduction; }
 
 inline double CUpwTurkel_Flow::GetPrecond_Beta() { return Beta; }
-
-inline double* CSource_Magnet::GetMagneticField() { return Current_Density; }
 
 inline double CNumerics::GetElec_CondIntegral() {return 0;}
 

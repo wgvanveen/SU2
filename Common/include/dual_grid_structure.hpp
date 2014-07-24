@@ -3,7 +3,7 @@
  * \brief Headers of the main subroutines for doing the complete dual grid structure.
  *        The subroutines and functions are in the <i>dual_grid_structure.cpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -23,6 +23,9 @@
 
 #pragma once
 
+#ifdef HAVE_MPI
+  #include "mpi.h"
+#endif
 #include <cmath>
 #include <iostream>
 #include <cstdlib>
@@ -37,7 +40,7 @@ using namespace std;
  * \brief Class for controlling the dual volume definition. The dual volume is compose by 
  *        three main elements: points, edges, and vertices.
  * \author F. Palacios.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CDualGrid{
 protected:
@@ -74,7 +77,7 @@ public:
 	 * \param[in] val_coord_Elem_CG - Coordinates of the centre of gravity of the element.
    * \param[in] config - Definition of the particular problem.
 	 */
-	virtual void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG,double *val_coord_Elem_CG, CConfig *config) = 0;
+	virtual void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG,double *val_coord_Elem_CG) = 0;
 	
 	/*! 
 	 * \overload
@@ -82,7 +85,7 @@ public:
 	 * \param[in] val_coord_Elem_CG - Coordinates of the centre of gravity of the element.
    * \param[in] config - Definition of the particular problem.
 	 */
-	virtual void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG, CConfig *config) = 0;
+	virtual void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG) = 0;
 	
 	/*! 
 	 * \brief A pure virtual member.
@@ -122,7 +125,7 @@ public:
  * \class CPoint
  * \brief Class for point definition (including control volume definition).
  * \author F. Palacios.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CPoint : public CDualGrid {
 private:
@@ -134,7 +137,8 @@ private:
 	double *Volume;	/*!< \brief Volume or Area of the control volume in 3D and 2D. */
 	bool Domain,		/*!< \brief Indicates if a point must be computed or belong to another boundary */
 	Boundary,       /*!< \brief To see if a point belong to the boundary (including MPI). */
-  PhysicalBoundary;			/*!< \brief To see if a point belong to the physical boundary (without includin MPI). */
+  PhysicalBoundary,			/*!< \brief To see if a point belong to the physical boundary (without includin MPI). */
+  SolidBoundary;			/*!< \brief To see if a point belong to the physical boundary (without includin MPI). */
 	long *vertex; /*!< \brief Index of the vertex that correspond which the control volume (we need one for each marker in the same node). */
 	double *coord,	/*!< \brief vector with the coordinates of the node. */
 	*Coord_old,		/*!< \brief Old coordinates vector for geometry smoothing. */
@@ -153,8 +157,10 @@ private:
 	unsigned short color;	/*!< \brief Color of the point in the partitioning strategy. */
 	double Wall_Distance;	/*!< \brief Distance to the nearest wall. */
   double SharpEdge_Distance;	/*!< \brief Distance to a sharp edge. */
+  double Curvature;	/*!< \brief Value of the surface curvature (SU2_GEO). */
 	unsigned long GlobalIndex;	/*!< \brief Global index in the parallel simulation. */
 	unsigned short nNeighbor;	/*!< \brief Color of the point in the partitioning strategy. */
+  bool Flip_Orientation;	/*!< \brief Flip the orientation of the normal. */
 
 public:
 	
@@ -221,6 +227,18 @@ public:
 	double GetWall_Distance(void);
 	
   /*!
+	 * \brief Set the value of the curvature at a surface node.
+	 * \param[in] val_distance - Value of the curvature.
+	 */
+	void SetCurvature(double val_curvature);
+	
+	/*!
+	 * \brief Get the value of the curvature at a surface node.
+	 * \return Value of the curvature.
+	 */
+	double GetCurvature(void);
+  
+  /*!
 	 * \brief Get the value of the distance to a sharp edge
 	 * \return Value of the distance to the nearest wall.
 	 */
@@ -259,6 +277,19 @@ public:
 	void SetCoord(unsigned short val_dim, double val_coord);
   
   /*!
+	 * \brief Get the coordinates of the control volume.
+	 * \return pointer to the coordinate of the point.
+	 */
+	bool GetFlip_Orientation(void);
+	
+	/*!
+	 * \brief Set the coordinates for the control volume.
+	 * \param[in] val_dim - Position to store the coordinate.
+	 * \param[in] val_coord - Coordinate for val_dim.
+	 */
+	void SetFlip_Orientation(void);
+  
+  /*!
 	 * \brief Set the coordinates for the control volume.
 	 * \param[in] val_dim - Position to store the coordinate.
 	 * \param[in] val_coord - Coordinate for val_dim.
@@ -288,7 +319,17 @@ public:
 	 * \param[in] val_elem - Element to be added.		 
 	 */
 	void SetElem(unsigned long val_elem);
-	
+  
+  /*!
+	 * \brief Reset the elements of a control volume.
+	 */
+	void ResetElem(void);
+  
+  /*!
+	 * \brief Reset the points that compose the control volume.
+	 */
+	void ResetPoint(void);
+
 	/*! 
 	 * \brief Set the points that compose the control volume.
 	 * \param[in] val_point - Point to be added.		 
@@ -361,6 +402,11 @@ public:
 	 * \param[in] val_nmarker - Max number of marker.
 	 */		
 	void SetBoundary(unsigned short val_nmarker);
+  
+  /*!
+	 * \brief Reset the boundary of a control volume.
+	 */
+	void ResetBoundary(void);
 	
 	/*! 
 	 * \overload
@@ -381,11 +427,23 @@ public:
 	void SetPhysicalBoundary(bool val_boundary);
   
   /*!
+	 * \brief Set if a point belong to the boundary.
+	 * \param[in] val_boundary - <code>TRUE</code> if the point belong to the physical boundary; otherwise <code>FALSE</code>.
+	 */
+	void SetSolidBoundary(bool val_boundary);
+  
+  /*!
 	 * \brief Provides information about if a point belong to the physical boundaries (without MPI).
 	 * \return <code>TRUE</code> if the point belong to the boundary; otherwise <code>FALSE</code>.
 	 */
 	bool GetPhysicalBoundary(void);
 	
+  /*!
+	 * \brief Provides information about if a point belong to the physical boundaries (without MPI).
+	 * \return <code>TRUE</code> if the point belong to the boundary; otherwise <code>FALSE</code>.
+	 */
+	bool GetSolidBoundary(void);
+  
 	/*! 
 	 * \brief Set a color to the point that comes from the grid partitioning.
 	 * \note Each domain has a different color.
@@ -416,6 +474,12 @@ public:
 	 * \return Global index in a parallel computation.
 	 */
 	unsigned long GetGlobalIndex(void);
+  
+  /*!
+	 * \brief Set the global index in a parallel computation.
+	 * \return Global index in a parallel computation.
+	 */
+	void SetGlobalIndex(unsigned long val_globalindex);
 	
 	/*! 
 	 * \brief Get the volume of the control volume at time n.
@@ -607,13 +671,13 @@ public:
 	 * \brief This function does nothing (it comes from a pure virtual function, that implies the 
 	 *        definition of the function in all the derived classes).
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG);
 	
 	/*! 
 	 * \brief This function does nothing (it comes from a pure virtual function, that implies the 
 	 *        definition of the function in all the derived classes).
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG);
 
 	/*! 
 	 * \brief This function does nothing (it comes from a pure virtual function, that implies the 
@@ -656,7 +720,7 @@ public:
  * \class CEdge
  * \brief Class for defining an edge.
  * \author F. Palacios.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CEdge : public CDualGrid {
 private:
@@ -670,9 +734,9 @@ public:
 	 * \brief Constructor of the class.
 	 * \param[in] val_iPoint - First node of the edge.		 
 	 * \param[in] val_jPoint - Second node of the edge.
-	 * \param[in] val_ndim - Number of dimensions of the problem.		 
+	 * \param[in] val_nDim - Number of dimensions of the problem.		 
 	 */
-	CEdge(unsigned long val_iPoint, unsigned long val_jPoint, unsigned short val_ndim);
+	CEdge(unsigned long val_iPoint, unsigned long val_jPoint, unsigned short val_nDim);
 	
 	/*! 
 	 * \brief Destructor of the class. 
@@ -733,7 +797,7 @@ public:
    * \param[in] config - Definition of the particular problem.
 	 * \return Compute the normal (dimensional) to the face that makes the control volume boundaries.
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG);
 	
 	/*!
 	 * \overload
@@ -743,7 +807,7 @@ public:
    * \param[in] config - Definition of the particular problem.
 	 * \return Compute the normal (dimensional) to the face that makes the contorl volume boundaries.
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG);
 	
 	/*! 
 	 * \brief Copy the the normal vector of a face.
@@ -793,14 +857,14 @@ public:
  * \class CVertex
  * \brief Class for vertex definition (equivalent to edges, but for the boundaries).
  * \author F. Palacios.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  */
 class CVertex : public CDualGrid {
 private:
 	unsigned long *Nodes;	/*!< \brief Vector to store the global nodes of an element. */
 	double *Normal;			/*!< \brief Normal al elemento y coordenadas de su centro de gravedad. */
 	double Aux_Var;			/*!< \brief Auxiliar variable defined only on the surface. */
-	double CarCoord[3];		/*!< \brief Vertex cartesians coordinates. */
+	double CartCoord[3];		/*!< \brief Vertex cartesians coordinates. */
 	double VarCoord[3];		/*!< \brief Used for storing the coordinate variation due to a surface modification. */
 	long PeriodicPoint[2];			/*!< \brief Store the periodic point of a boundary (iProcessor, iPoint) */
 	short Rotation_Type;			/*!< \brief Type of rotation associated with the vertex (MPI and periodic) */
@@ -813,9 +877,9 @@ public:
 	/*! 
 	 * \brief Constructor of the class.
 	 * \param[in] val_point - Node of the vertex.
-	 * \param[in] val_ndim - Number of dimensions of the problem.		
+	 * \param[in] val_nDim - Number of dimensions of the problem.		
 	 */
-	CVertex(unsigned long val_point, unsigned short val_ndim);
+	CVertex(unsigned long val_point, unsigned short val_nDim);
 	
 	/*! 
 	 * \brief Destructor of the class. 
@@ -842,7 +906,7 @@ public:
    * \param[in] config - Definition of the particular problem.
 	 * \return Compute the normal (dimensional) to the face that makes the vertex.
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_FaceElem_CG, double *val_coord_Elem_CG);
 	
 	/*! 
 	 * \overload
@@ -851,7 +915,7 @@ public:
    * \param[in] config - Definition of the particular problem.
 	 * \return Compute the normal (dimensional) to the face that makes the vertex.
 	 */
-	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG, CConfig *config);
+	void SetNodes_Coord(double *val_coord_Edge_CG, double *val_coord_Elem_CG);
 	
 	/*! 
 	 * \brief Copy the the normal vector of a face.
@@ -930,6 +994,13 @@ public:
 	 * \return Value of the cartesian coordinate of the vertex.
 	 */
 	double *GetCoord(void);
+  
+  /*!
+	 * \brief Get the value of the cartesian coordinate for the vertex.
+   * \param[in] val_dim - Variable of the dimension.
+	 * \return Value of the cartesian coordinate of the vertex.
+	 */
+  double GetCoord(unsigned short val_dim);
 	
 	/*! 
 	 * \brief Set the type of rotation associated to the vertex.
@@ -960,7 +1031,13 @@ public:
 	 * \brief Get the value of the periodic point of a vertex.
 	 * \return Value of the periodic point of a vertex.
 	 */
-	long GetDonorPoint(void);	
+	long GetDonorPoint(void);
+  
+  /*!
+	 * \brief Get the value of the periodic point of a vertex.
+	 * \return Value of the periodic point of a vertex.
+	 */
+	long GetDonorProcessor(void);
   
 	/*! 
 	 * \brief Get the value of the periodic point of a vertex, and its somain

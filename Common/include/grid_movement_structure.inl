@@ -2,7 +2,7 @@
  * \file grid_movement_structure.inl
  * \brief In-Line subroutines of the <i>grid_movement_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -77,10 +77,10 @@ inline double *CFreeFormDefBox::Get_CartesianCoord(unsigned long val_iSurfacePoi
 																																										return cart_coord_; }
 
 inline double *CFreeFormDefBox::Get_ParametricCoord(unsigned long val_iSurfacePoints) { 
-																																										param_coord_[0] = ParametricCoord[0][val_iSurfacePoints];
-																																										param_coord_[1] = ParametricCoord[1][val_iSurfacePoints];
-																																										param_coord_[2] = ParametricCoord[2][val_iSurfacePoints];
-																																										return param_coord_; }
+																																										ParamCoord_[0] = ParametricCoord[0][val_iSurfacePoints];
+																																										ParamCoord_[1] = ParametricCoord[1][val_iSurfacePoints];
+																																										ParamCoord_[2] = ParametricCoord[2][val_iSurfacePoints];
+																																										return ParamCoord_; }
 																																										
 inline unsigned long CFreeFormDefBox::GetnSurfacePoint(void) { return PointIndex.size(); }
 
@@ -88,7 +88,9 @@ inline void CFreeFormDefBox::SetnCornerPoints(unsigned short val_ncornerpoints){
 
 inline unsigned short CFreeFormDefBox::GetnCornerPoints(void){ return nCornerPoints; }
 
-inline unsigned short CFreeFormDefBox::GetnControlPoints(void){ return lOrder*mOrder*nOrder; }
+inline unsigned short CFreeFormDefBox::GetnControlPoints(void){ return nControlPoints; }
+
+inline void CFreeFormDefBox::SetnControlPoints(void){ nControlPoints = lOrder*mOrder*nOrder; }
 
 inline unsigned long CFreeFormDefBox::GetnSurfacePoints(void){ return 0; }
 
@@ -106,6 +108,12 @@ inline unsigned short CFreeFormDefBox::GetmOrder(void) { return mOrder; }
 
 inline unsigned short CFreeFormDefBox::GetnOrder(void) { return nOrder; }
 
+inline void CFreeFormDefBox::SetlOrder(unsigned short val_lOrder) { lOrder = val_lOrder; lDegree = lOrder-1; }
+
+inline void CFreeFormDefBox::SetmOrder(unsigned short val_mOrder) { mOrder = val_mOrder; mDegree = mOrder-1; }
+
+inline void CFreeFormDefBox::SetnOrder(unsigned short val_nOrder) { nOrder = val_nOrder; nDegree = nOrder-1;}
+
 inline void  CFreeFormDefBox::SetCoordCornerPoints(double *val_coord, unsigned short val_icornerpoints) {
 	for (unsigned short iDim = 0; iDim < nDim; iDim++) 
 		Coord_Corner_Points[val_icornerpoints][iDim] = val_coord[iDim];
@@ -114,7 +122,12 @@ inline void  CFreeFormDefBox::SetCoordCornerPoints(double *val_coord, unsigned s
 inline void CFreeFormDefBox::SetCoordControlPoints(double *val_coord, unsigned short iDegree, unsigned short jDegree, unsigned short kDegree) {
 	for (unsigned short iDim = 0; iDim < nDim; iDim++) {
 			Coord_Control_Points[iDegree][jDegree][kDegree][iDim] = val_coord[iDim];
-			Coord_Control_Points_Copy[iDegree][jDegree][kDegree][iDim] = Coord_Control_Points[iDegree][jDegree][kDegree][iDim];
+		}
+}
+
+inline void CFreeFormDefBox::SetCoordControlPoints_Copy(double *val_coord, unsigned short iDegree, unsigned short jDegree, unsigned short kDegree) {
+	for (unsigned short iDim = 0; iDim < nDim; iDim++) {
+			Coord_Control_Points_Copy[iDegree][jDegree][kDegree][iDim] = val_coord[iDim];
 		}
 }
 
@@ -135,11 +148,15 @@ inline void CFreeFormDefBox::SetControlPoints(unsigned short *val_index, double 
 }
 
 inline void CFreeFormDefBox::SetOriginalControlPoints() {
-	for (unsigned short iDegree = 0; iDegree <= lDegree; iDegree++)
-		for (unsigned short jDegree = 0; jDegree <= mDegree; jDegree++)
-			for (unsigned short kDegree = 0; kDegree <= nDegree; kDegree++)
+	for (unsigned short iDegree = 0; iDegree <= lDegree_Copy; iDegree++)
+		for (unsigned short jDegree = 0; jDegree <= mDegree_Copy; jDegree++)
+			for (unsigned short kDegree = 0; kDegree <= nDegree_Copy; kDegree++)
 				for (unsigned short iDim = 0; iDim < nDim; iDim++)
 					Coord_Control_Points[iDegree][jDegree][kDegree][iDim] = Coord_Control_Points_Copy[iDegree][jDegree][kDegree][iDim];
+          
+  lDegree = lDegree_Copy; mDegree = mDegree_Copy; nDegree = nDegree_Copy;
+  lOrder = lOrder_Copy; mOrder = mOrder_Copy; nOrder = nOrder_Copy;
+  nControlPoints = nControlPoints_Copy;
 }
 
 inline void CFreeFormDefBox::CrossProduct (double *v1, double *v2, double *v3) {
@@ -159,6 +176,10 @@ inline string CFreeFormDefBox::GetTag() { return Tag; }
 inline void CFreeFormDefBox::SetLevel(unsigned short val_level) { Level = val_level; }
 
 inline unsigned short CFreeFormDefBox::GetLevel() { return Level; }
+
+inline double CFreeFormDefBox::Determinant_3x3(double A00, double A01, double A02, double A10, double A11, double A12, double A20, double A21, double A22) {
+	return A00*(A11*A22-A12*A21) - A01*(A10*A22-A12*A20) + A02*(A10*A21-A11*A20);
+}
 
 inline double CVolumetricMovement::Determinant_3x3(double A00, double A01, double A02, double A10, double A11, double A12, double A20, double A21, double A22) {
 	return A00*(A11*A22-A12*A21) - A01*(A10*A22-A12*A20) + A02*(A10*A21-A11*A20);

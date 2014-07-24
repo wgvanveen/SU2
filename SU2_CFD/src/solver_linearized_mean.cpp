@@ -2,7 +2,7 @@
  * \file solution_linearized_mean.cpp
  * \brief Main subrotuines for solving linearized problems (Euler, Navier-Stokes, etc.).
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -31,12 +31,8 @@ CLinEulerSolver::CLinEulerSolver(CGeometry *geometry, CConfig *config) : CSolver
 	ifstream restart_file;
   
   int rank = MASTER_NODE;
-#ifndef NO_MPI
-#ifdef WINDOWS
-  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
-#else
-  rank = MPI::COMM_WORLD.Get_rank();
-#endif
+#ifdef HAVE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 #endif
   
 	bool restart = config->GetRestart();
@@ -217,9 +213,9 @@ void CLinEulerSolver::Centered_Residual(CGeometry *geometry, CSolver **solver_co
 											 CConfig *config, unsigned short iMesh, unsigned short iRKStep) {
 	unsigned long iEdge, iPoint, jPoint;
 	bool implicit = (config->GetKind_TimeIntScheme_LinFlow() == EULER_IMPLICIT);
-	bool high_order_diss = ((config->GetKind_Centered() == JST) && (iMesh == MESH_0));
+	bool second_order = ((config->GetKind_Centered() == JST) && (iMesh == MESH_0));
 	
-	if (high_order_diss) 
+	if (second_order) 
 		SetUndivided_Laplacian(geometry, config);
 	
 	for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
@@ -245,7 +241,7 @@ void CLinEulerSolver::Centered_Residual(CGeometry *geometry, CSolver **solver_co
 						  solver_container[FLOW_SOL]->node[jPoint]->GetLambda());
 
 		/*--- Undivided laplacian ---*/
-		if (high_order_diss) 
+		if (second_order) 
 			numerics->SetUndivided_Laplacian(node[iPoint]->GetUndivided_Laplacian(),node[jPoint]->GetUndivided_Laplacian());
 		
 		/*--- Compute residual ---*/
@@ -334,7 +330,7 @@ void CLinEulerSolver::Inviscid_DeltaForces(CGeometry *geometry, CSolver **solver
 
 	/*--- Loop over the Euler markers ---*/
 	for (iMarker = 0; iMarker < config->GetnMarker_All(); iMarker++) {
-		Boundary = config->GetMarker_All_Boundary(iMarker);
+		Boundary = config->GetMarker_All_KindBC(iMarker);
 		Monitoring = config->GetMarker_All_Monitoring(iMarker);
 		if ((Boundary == EULER_WALL) || (Boundary == HEAT_FLUX) || (Boundary == ISOTHERMAL)) {
 			for (iDim = 0; iDim < nDim; iDim++) DeltaForceInviscid[iDim] = 0.0;
@@ -464,7 +460,7 @@ void CLinEulerSolver::BC_Far_Field(CGeometry *geometry, CSolver **solver_contain
 	double *W_wall = new double[nVar];
 	double *W_infty = new double[nVar];
 	double *W_update = new double[nVar];
-	double Mach = config->GetMach_FreeStreamND();
+	double Mach = config->GetMach();
 	double DeltaMach = 1.0;
 
 	/*--- Loop over all the vertices ---*/

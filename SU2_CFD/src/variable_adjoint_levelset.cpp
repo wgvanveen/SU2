@@ -2,7 +2,7 @@
  * \file variable_adjoint_levelset.cpp
  * \brief Definition of the solution fields.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.0.0 "eagle"
+ * \version 3.2.0 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -25,30 +25,35 @@
 
 CAdjLevelSetVariable::CAdjLevelSetVariable(void) : CVariable() {}
 
-CAdjLevelSetVariable::CAdjLevelSetVariable(unsigned short val_ndim, unsigned short val_nvar, CConfig *config)
-: CVariable(val_ndim, val_nvar, config) {
+CAdjLevelSetVariable::CAdjLevelSetVariable(unsigned short val_nDim, unsigned short val_nvar, CConfig *config)
+: CVariable(val_nDim, val_nvar, config) {
 	
 	/*--- Allocate residual structures ---*/
+  
 	Residual_Sum = new double [nVar]; Residual_Old = new double [nVar];
 	
 	/*--- Allocate limiter (upwind)---*/
-	if (config->GetKind_SlopeLimit() != NONE) Limiter = new double [nVar];
+  
+	if (config->GetSpatialOrder() == SECOND_ORDER_LIMITER) Limiter = new double [nVar];
 	
 }
 
-CAdjLevelSetVariable::CAdjLevelSetVariable(double val_levelset, unsigned short val_ndim, unsigned short val_nvar, CConfig *config)
-: CVariable(val_ndim, val_nvar,config) {
+CAdjLevelSetVariable::CAdjLevelSetVariable(double val_levelset, unsigned short val_nDim, unsigned short val_nvar, CConfig *config)
+: CVariable(val_nDim, val_nvar,config) {
 	
   bool dual_time = ((config->GetUnsteady_Simulation() == DT_STEPPING_1ST) ||
                     (config->GetUnsteady_Simulation() == DT_STEPPING_2ND));
   
 	/*--- Allocate residual structures ---*/
+  
 	Residual_Sum = new double [nVar]; Residual_Old = new double [nVar];
 	
 	/*--- Allocate limiter (upwind)---*/
-	if (config->GetKind_SlopeLimit() != NONE) Limiter = new double [nVar];
+  
+	if (config->GetSpatialOrder() == SECOND_ORDER_LIMITER) Limiter = new double [nVar];
 	
 	/*--- Solution and old solution initialization ---*/
+  
 	Solution[0] = val_levelset;		Solution_Old[0] = val_levelset;
 	
 	if (dual_time) {

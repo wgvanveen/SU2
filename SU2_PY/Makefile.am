@@ -1,4 +1,4 @@
-# SU^2 Makefile.am for Python scripts
+# SU2 Makefile.am for Python scripts
 # Stanford University Aerospace Design Lab
 #
 # Created: 	4/4/2013
@@ -17,13 +17,10 @@ bin_SCRIPTS = \
     patient_designspace.py \
     shape_optimization.py \
     merge_solution.py \
-    2DChannel.py \
-    3DChannel.py \
-    config_gui.py \
-    filter_adjoint.py \
-    compute_polar.py \
-    mesh_adaptation.py
-		      
+    set_ffd_design_var.py \
+    compute_polar.py
+
+
 mypkgdir = $(prefix)/bin
 nobase_dist_mypkg_DATA= \
     SU2/__init__.py \
@@ -69,3 +66,4 @@ nobase_dist_mypkg_DATA= \
     SU2/util/which.py \
     SU2/util/__init__.py
 
+EXTRA_DIST = $(bin_SCRIPTS)
