@@ -5582,15 +5582,187 @@ void COutput::SetResult_Files(CSolver ****solver_container, CGeometry ***geometr
   }
 }
 
+void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig **config, unsigned short val_nZone) {
+  
+  unsigned short iZone, iNode, iDim, iVar;
+  unsigned long iElem, LeftPoint[8], RightPoint[8], nPoint_Renumber = 0, TotalNodes = 0;
+  double Coord[3], U[5];
+  long *Point_Renumber, *Point_Invert, jPoint, iPoint;
+  unsigned short nVar, nDim;
+  
+  vector<unsigned long> LeftFaceList[3], RightFaceList[3]; /*!< \brief Vector containing the triangle nodes */
+  unsigned short nLeftNodes, nRightNodes;
+  
+  /*--- Loop over all the zones in the grid (typically only one) ---*/
+  
+  for (iZone = 0; iZone < val_nZone; iZone++) {
+    
+    /*--- Set the value of the number of dimensions and conservative variables ---*/
+    
+    nDim = geometry[iZone]->GetnDim();
+    nVar = nDim+2;
+
+    /*--- Create auxiliar arrays to renumber the points (static array), we need this to create a 
+     TecPlot file with a subset of the points in the grid ---*/
+    
+    Point_Renumber = new long [geometry[iZone]->GetnPoint()];
+    Point_Invert = new long [geometry[iZone]->GetnPoint()];
+    
+    /*--- Initialization of the auxiliar arrays ---*/
+    
+    for (iPoint = 0; iPoint < geometry[iZone]->GetnPoint(); iPoint++) {
+      Point_Renumber[iPoint] = -1;
+      Point_Invert[iPoint] = -1;
+    }
+    
+    /*--- Loop over all the elements in the grid ---*/
+    
+    for (iElem = 0; iElem < geometry[iZone]->GetnElem(); iElem++) {
+      
+      nLeftNodes = 0; nRightNodes = 0;
+      
+      /*--- Loop over all the nodes in a element (4 in a tetrahedron, 3 in a triangle) ---*/
+      
+      for (iNode = 0; iNode < geometry[iZone]->elem[iElem]->GetnNodes(); iNode++) {
+        
+        /*--- Get the global index of a point ---*/
+        
+        iPoint = geometry[iZone]->elem[iElem]->GetNode(iNode);
+        
+        /*--- Get the coordinates of the point ---*/
+        
+        for (iDim = 0; iDim < nDim; iDim++)
+          Coord[iDim] = geometry[iZone]->node[iPoint]->GetCoord(iDim);
+        
+        /*--- Identify the points that are at both sides of a plane x=0 ---*/
+        
+        if (Coord[0] >= 0.0) { RightPoint[nRightNodes] = iPoint; nRightNodes++; }
+        else { LeftPoint[nLeftNodes] = iPoint; nLeftNodes++; }
+        
+      }
+      
+      /*--- The plane divides the triangle or tetrahedron (nRightNodes = 1 or nLeftNodes == 1). 
+       Create the list of edges (2D) or triangles (3D). Note that we are renumbering the points, the new 
+       list of points that belong to the sections have their own numbering ---*/
+      
+      if (nRightNodes == 1) {
+        
+        if (Point_Renumber[LeftPoint[0]] == -1) { Point_Renumber[LeftPoint[0]] = nPoint_Renumber; nPoint_Renumber++; }
+        if (Point_Renumber[LeftPoint[1]] == -1) { Point_Renumber[LeftPoint[1]] = nPoint_Renumber; nPoint_Renumber++; }
+        
+        LeftFaceList[0].push_back(Point_Renumber[LeftPoint[0]]);
+        LeftFaceList[1].push_back(Point_Renumber[LeftPoint[1]]);
+        
+        if (nDim == 3) {
+          if (Point_Renumber[LeftPoint[2]] == -1) { Point_Renumber[LeftPoint[2]] = nPoint_Renumber; nPoint_Renumber++; }
+          LeftFaceList[2].push_back(Point_Renumber[LeftPoint[2]]);
+        }
+        
+      }
+      
+      if (nLeftNodes == 1) {
+        
+        if (Point_Renumber[RightPoint[0]] == -1) { Point_Renumber[RightPoint[0]] = nPoint_Renumber; nPoint_Renumber++; }
+        if (Point_Renumber[RightPoint[1]] == -1) { Point_Renumber[RightPoint[1]] = nPoint_Renumber; nPoint_Renumber++; }
+        
+        RightFaceList[0].push_back(Point_Renumber[RightPoint[0]]);
+        RightFaceList[1].push_back(Point_Renumber[RightPoint[1]]);
+        
+        if (nDim == 3) {
+          if (Point_Renumber[RightPoint[2]] == -1) { Point_Renumber[RightPoint[2]] = nPoint_Renumber; nPoint_Renumber++; }
+          RightFaceList[2].push_back(Point_Renumber[RightPoint[2]]);
+        }
+        
+      }
+      
+    }
+    
+    /*--- Total Number of points ---*/
+    
+    TotalNodes = nPoint_Renumber;
+    
+    /*--- Invert the list of points. This is useful for visualization purposes to identify
+     a subset of points in the grid ---*/
+    
+    for (iPoint = 0; iPoint < geometry[iZone]->GetnPoint(); iPoint++) {
+      jPoint = Point_Renumber[iPoint];
+      if (jPoint != -1) Point_Invert[jPoint] = iPoint;
+    }
+    
+    /*--- Create the TecPlot file ---*/
+    
+    ofstream Tecplot_File;
+    Tecplot_File.open("Sections.plt", ios::out);
+    Tecplot_File << "TITLE= \"Domain double sections\"" << endl;
+    
+    if (nDim == 2) {
+      Tecplot_File << "VARIABLES = \"x\",\"y\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_E\",\"Global_Index\"" << endl;
+      Tecplot_File << "ZONE T=\"RIGHT PLANE\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size()+LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FELINESEG"<< endl;
+    }
+    else if (nDim == 3) {
+      Tecplot_File << "VARIABLES = \"x\",\"y\",\"z\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_W\",\"Rho_E\",\"Global_Index\"" << endl;
+      Tecplot_File << "ZONE T=\"RIGHT PLANE\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size()+LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL"<< endl;
+    }
+
+    /*--- Loop over all the points that belong to the sections ---*/
+
+    for (iPoint = 0; iPoint < TotalNodes; iPoint++) {
+      
+      /*--- Get the coordinates of the point ---*/
+      
+      for (iDim = 0; iDim < geometry[iZone]->GetnDim(); iDim++)
+        Coord[iDim] = geometry[iZone]->node[Point_Invert[iPoint]]->GetCoord(iDim);
+
+      /*--- Get the conservative variables of the point ---*/
+      
+      for (iVar = 0; iVar < nVar; iVar++)
+        U[iVar] = solver[iZone]->node[Point_Invert[iPoint]]->GetSolution(iVar);
+      
+      /*--- Write the coordinates and conservative variables ---*/
+      
+      if (nDim == 2)
+        Tecplot_File << Coord[0] <<" "<< Coord[1] << " " << U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< Point_Invert[iPoint] << endl;
+      else if (nDim == 3)
+        Tecplot_File << Coord[0] <<" "<< Coord[1] <<" "<< Coord[2] << " " << U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< U[4] <<" "<< Point_Invert[iPoint] << endl;
+      
+    }
+    
+    /*--- Write the conectivity (first section) ---*/
+    
+    for (iElem = 0; iElem < RightFaceList[0].size(); iElem++) {
+      Tecplot_File << RightFaceList[0][iElem]+1 <<" "<< RightFaceList[1][iElem]+1 <<" "<<
+      RightFaceList[2][iElem]+1 <<" "<< RightFaceList[2][iElem]+1 << endl;
+    }
+    
+    /*--- Write the conectivity (second section) ---*/
+
+    for (iElem = 0; iElem < LeftFaceList[0].size(); iElem++) {
+      Tecplot_File << LeftFaceList[0][iElem]+1 <<" "<< LeftFaceList[1][iElem]+1 <<" "<<
+      LeftFaceList[2][iElem]+1 <<" "<< LeftFaceList[2][iElem]+1 << endl;
+    }
+    
+    /*--- Close TecPlot file ---*/
+
+    Tecplot_File.close();
+
+    /*--- Deallocate static memory ---*/
+
+    delete [] Point_Renumber;
+    delete [] Point_Invert;
+
+  }
+  
+}
+
 void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CConfig **config,
                                       unsigned long iExtIter, unsigned short val_nZone) {
   
+  unsigned short iZone;
   int rank = MASTER_NODE;
+
 #ifdef HAVE_MPI
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 #endif
-  
-  unsigned short iZone;
   
   for (iZone = 0; iZone < val_nZone; iZone++) {
     
@@ -5636,6 +5808,7 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case TECPLOT:
             
             /*--- Write a Tecplot ASCII file ---*/
+            
             SetTecplot_ASCII(config[iZone], geometry[iZone], solver,iZone, val_nZone, false);
             DeallocateConnectivity(config[iZone], geometry[iZone], false);
             break;
@@ -5643,6 +5816,7 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case TECPLOT_BINARY:
             
             /*--- Write a Tecplot binary solution file ---*/
+            
             SetTecplot_Mesh(config[iZone], geometry[iZone], iZone);
             SetTecplot_Solution(config[iZone], geometry[iZone], iZone);
             break;
@@ -5650,12 +5824,14 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case CGNS_SOL:
             
             /*--- Write a CGNS solution file ---*/
+            
             SetCGNS_Solution(config[iZone], geometry[iZone], iZone);
             break;
             
           case PARAVIEW:
             
             /*--- Write a Paraview ASCII file ---*/
+            
             SetParaview_ASCII(config[iZone], geometry[iZone], iZone, val_nZone, false);
             DeallocateConnectivity(config[iZone], geometry[iZone], false);
             break;
@@ -5675,6 +5851,7 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case TECPLOT:
             
             /*--- Write a Tecplot ASCII file ---*/
+            
             SetTecplot_ASCII(config[iZone], geometry[iZone],solver, iZone, val_nZone, true);
             DeallocateConnectivity(config[iZone], geometry[iZone], true);
             break;
@@ -5682,6 +5859,7 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case TECPLOT_BINARY:
             
             /*--- Write a Tecplot binary solution file ---*/
+            
             SetTecplot_SurfaceMesh(config[iZone], geometry[iZone], iZone);
             SetTecplot_SurfaceSolution(config[iZone], geometry[iZone], iZone);
             break;
@@ -5689,6 +5867,7 @@ void COutput::SetBaselineResult_Files(CSolver **solver, CGeometry **geometry, CC
           case PARAVIEW:
             
             /*--- Write a Paraview ASCII file ---*/
+            
             SetParaview_ASCII(config[iZone], geometry[iZone], iZone, val_nZone, true);
             DeallocateConnectivity(config[iZone], geometry[iZone], true);
             break;
