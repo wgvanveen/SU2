@@ -5584,35 +5584,33 @@ void COutput::SetResult_Files(CSolver ****solver_container, CGeometry ***geometr
 
 void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig **config, unsigned short val_nZone) {
   
-  unsigned short iZone, iNode, iDim, iVar;
+  unsigned short iZone, iNode, iDim, iVar, nVar, nDim, nLeftNodes, nRightNodes;
   unsigned long iElem, LeftPoint[8], RightPoint[8], nPoint_Renumber = 0, TotalNodes = 0;
   double Coord[3], U[5];
   long *Point_Renumber, *Point_Invert, jPoint, iPoint;
-  unsigned short nVar, nDim;
-  
-  vector<unsigned long> LeftFaceList[3], RightFaceList[3]; /*!< \brief Vector containing the triangle nodes */
-  unsigned short nLeftNodes, nRightNodes;
-  
-  /*--- Loop over all the zones in the grid (typically only one) ---*/
+  vector<unsigned long> LeftFaceList[3], RightFaceList[3];
+  ofstream Tecplot_File;
+
+  /*--- Loop over all the zones in the grid (typically... only one zone) ---*/
   
   for (iZone = 0; iZone < val_nZone; iZone++) {
     
-    /*--- Set the value of the number of dimensions and conservative variables ---*/
+    /*--- Set the value of the number of dimensions (2D or 3D) and conservative variables (nDim+2) ---*/
     
     nDim = geometry[iZone]->GetnDim();
     nVar = nDim+2;
 
-    /*--- Create auxiliar arrays to renumber the points (static array), we need this to create a 
+    /*--- Create auxiliar arrays to renumber the points (dynamic array), we need this to create a
      TecPlot file with a subset of the points in the grid ---*/
     
     Point_Renumber = new long [geometry[iZone]->GetnPoint()];
-    Point_Invert = new long [geometry[iZone]->GetnPoint()];
+    Point_Invert   = new long [geometry[iZone]->GetnPoint()];
     
     /*--- Initialization of the auxiliar arrays ---*/
     
     for (iPoint = 0; iPoint < geometry[iZone]->GetnPoint(); iPoint++) {
       Point_Renumber[iPoint] = -1;
-      Point_Invert[iPoint] = -1;
+      Point_Invert[iPoint]   = -1;
     }
     
     /*--- Loop over all the elements in the grid ---*/
@@ -5625,7 +5623,7 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
       
       for (iNode = 0; iNode < geometry[iZone]->elem[iElem]->GetnNodes(); iNode++) {
         
-        /*--- Get the global index of a point ---*/
+        /*--- Get the global index of the point ---*/
         
         iPoint = geometry[iZone]->elem[iElem]->GetNode(iNode);
         
@@ -5641,14 +5639,16 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
         
       }
       
-      /*--- The plane divides the triangle or tetrahedron (nRightNodes = 1 or nLeftNodes == 1). 
+      /*--- If the plane divides the triangle or tetrahedron then nRightNodes = 1 or nLeftNodes = 1.
        Create the list of edges (2D) or triangles (3D). Note that we are renumbering the points, the new 
-       list of points that belong to the sections have their own numbering ---*/
+       list of points that belongs to the sections have their own numbering ---*/
       
       if (nRightNodes == 1) {
         
         if (Point_Renumber[LeftPoint[0]] == -1) { Point_Renumber[LeftPoint[0]] = nPoint_Renumber; nPoint_Renumber++; }
         if (Point_Renumber[LeftPoint[1]] == -1) { Point_Renumber[LeftPoint[1]] = nPoint_Renumber; nPoint_Renumber++; }
+        
+        /*--- LeftFaceList is an array of vectors. Vectors are a flexible data structure that can change in size)---*/
         
         LeftFaceList[0].push_back(Point_Renumber[LeftPoint[0]]);
         LeftFaceList[1].push_back(Point_Renumber[LeftPoint[1]]);
@@ -5665,6 +5665,8 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
         if (Point_Renumber[RightPoint[0]] == -1) { Point_Renumber[RightPoint[0]] = nPoint_Renumber; nPoint_Renumber++; }
         if (Point_Renumber[RightPoint[1]] == -1) { Point_Renumber[RightPoint[1]] = nPoint_Renumber; nPoint_Renumber++; }
         
+        /*--- RightFaceList is an array of vectors. Vectors are a flexible data structure that can change in size)---*/
+
         RightFaceList[0].push_back(Point_Renumber[RightPoint[0]]);
         RightFaceList[1].push_back(Point_Renumber[RightPoint[1]]);
         
@@ -5677,7 +5679,7 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
       
     }
     
-    /*--- Total Number of points ---*/
+    /*--- Total number of points ---*/
     
     TotalNodes = nPoint_Renumber;
     
@@ -5691,20 +5693,24 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
     
     /*--- Create the TecPlot file ---*/
     
-    ofstream Tecplot_File;
     Tecplot_File.open("Sections.plt", ios::out);
-    Tecplot_File << "TITLE= \"Domain double sections\"" << endl;
     
+    /*--- Add text to the file ---*/
+
+    Tecplot_File << "TITLE= \"Volumetric grid double sections\"" << endl;
+    
+    /*--- Write the right section ---*/
+
     if (nDim == 2) {
       Tecplot_File << "VARIABLES = \"x\",\"y\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_E\",\"Global_Index\"" << endl;
-      Tecplot_File << "ZONE T=\"RIGHT PLANE\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size()+LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FELINESEG"<< endl;
+      Tecplot_File << "ZONE T=\"RIGHT_SECTION\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FELINESEG"<< endl;
     }
     else if (nDim == 3) {
       Tecplot_File << "VARIABLES = \"x\",\"y\",\"z\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_W\",\"Rho_E\",\"Global_Index\"" << endl;
-      Tecplot_File << "ZONE T=\"RIGHT PLANE\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size()+LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL"<< endl;
+      Tecplot_File << "ZONE T=\"RIGHT_SECTION\", NODES= "<< TotalNodes <<", ELEMENTS= " << RightFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL"<< endl;
     }
 
-    /*--- Loop over all the points that belong to the sections ---*/
+    /*--- Loop over all the points that belong to the section ---*/
 
     for (iPoint = 0; iPoint < TotalNodes; iPoint++) {
       
@@ -5713,39 +5719,83 @@ void COutput::SetGrid_Sections(CSolver **solver, CGeometry **geometry, CConfig *
       for (iDim = 0; iDim < geometry[iZone]->GetnDim(); iDim++)
         Coord[iDim] = geometry[iZone]->node[Point_Invert[iPoint]]->GetCoord(iDim);
 
-      /*--- Get the conservative variables of the point ---*/
+      /*--- Get the conservative variables of the point, note that in solution we also
+       store the coordinates (x, y, z, rho, rhou, rhov, rhow, rhoE), that is the reason 
+       we add nDim ---*/
       
       for (iVar = 0; iVar < nVar; iVar++)
-        U[iVar] = solver[iZone]->node[Point_Invert[iPoint]]->GetSolution(iVar);
+        U[iVar] = solver[iZone]->node[Point_Invert[iPoint]]->GetSolution(iVar+nDim);
       
       /*--- Write the coordinates and conservative variables ---*/
       
       if (nDim == 2)
         Tecplot_File << Coord[0] <<" "<< Coord[1] << " " << U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< Point_Invert[iPoint] << endl;
       else if (nDim == 3)
-        Tecplot_File << Coord[0] <<" "<< Coord[1] <<" "<< Coord[2] << " " << U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< U[4] <<" "<< Point_Invert[iPoint] << endl;
+        Tecplot_File << Coord[0] <<" "<< Coord[1] <<" "<< Coord[2] <<" "<< U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< U[4] <<" "<< Point_Invert[iPoint] << endl;
       
     }
     
-    /*--- Write the conectivity (first section) ---*/
+    /*--- Write the conectivity (triangles of edges). Note that TecPlot numbering starts in 1 ---*/
     
     for (iElem = 0; iElem < RightFaceList[0].size(); iElem++) {
-      Tecplot_File << RightFaceList[0][iElem]+1 <<" "<< RightFaceList[1][iElem]+1 <<" "<<
-      RightFaceList[2][iElem]+1 <<" "<< RightFaceList[2][iElem]+1 << endl;
+      if (nDim == 2)
+        Tecplot_File << RightFaceList[0][iElem]+1 <<" "<< RightFaceList[1][iElem]+1 << endl;
+      else if (nDim == 3)
+        Tecplot_File << RightFaceList[0][iElem]+1 <<" "<< RightFaceList[1][iElem]+1 <<" "<<
+        RightFaceList[2][iElem]+1 <<" "<< RightFaceList[2][iElem]+1 << endl;
     }
     
-    /*--- Write the conectivity (second section) ---*/
+    /*--- Write the left section ---*/
 
+    if (nDim == 2) {
+      Tecplot_File << "VARIABLES = \"x\",\"y\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_E\",\"Global_Index\"" << endl;
+      Tecplot_File << "ZONE T=\"LEFT_SECTION\", NODES= "<< TotalNodes <<", ELEMENTS= " << LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FELINESEG"<< endl;
+    }
+    else if (nDim == 3) {
+      Tecplot_File << "VARIABLES = \"x\",\"y\",\"z\",\"Rho\",\"Rho_U\",\"Rho_V\",\"Rho_W\",\"Rho_E\",\"Global_Index\"" << endl;
+      Tecplot_File << "ZONE T=\"LEFT_SECTION\", NODES= "<< TotalNodes <<", ELEMENTS= " << LeftFaceList[0].size() <<", DATAPACKING=POINT, ZONETYPE=FEQUADRILATERAL"<< endl;
+    }
+    
+    /*--- Loop over all the points that belong to the section ---*/
+    
+    for (iPoint = 0; iPoint < TotalNodes; iPoint++) {
+      
+      /*--- Get the coordinates of the point ---*/
+      
+      for (iDim = 0; iDim < geometry[iZone]->GetnDim(); iDim++)
+        Coord[iDim] = geometry[iZone]->node[Point_Invert[iPoint]]->GetCoord(iDim);
+      
+      /*--- Get the conservative variables of the point, note that in solution we also
+       store the coordinates before the conservative variables
+       (x, y, z, rho, rhou, rhov, rhow, rhoE), that is the reason we add nDim ---*/
+      
+      for (iVar = 0; iVar < nVar; iVar++)
+        U[iVar] = solver[iZone]->node[Point_Invert[iPoint]]->GetSolution(iVar+nDim);
+      
+      /*--- Write the coordinates and conservative variables ---*/
+      
+      if (nDim == 2)
+        Tecplot_File << Coord[0] <<" "<< Coord[1] << " " << U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< Point_Invert[iPoint] << endl;
+      else if (nDim == 3)
+        Tecplot_File << Coord[0] <<" "<< Coord[1] <<" "<< Coord[2] <<" "<< U[0] <<" "<< U[1] <<" "<< U[2] <<" "<< U[3] <<" "<< U[4] <<" "<< Point_Invert[iPoint] << endl;
+      
+    }
+    
+    /*--- Write the conectivity (triangles of edges). Note that TecPlot numbering starts in 1 ---*/
+    
     for (iElem = 0; iElem < LeftFaceList[0].size(); iElem++) {
-      Tecplot_File << LeftFaceList[0][iElem]+1 <<" "<< LeftFaceList[1][iElem]+1 <<" "<<
-      LeftFaceList[2][iElem]+1 <<" "<< LeftFaceList[2][iElem]+1 << endl;
+      if (nDim == 2)
+        Tecplot_File << LeftFaceList[0][iElem]+1 <<" "<< LeftFaceList[1][iElem]+1 << endl;
+      else if (nDim == 3)
+        Tecplot_File << LeftFaceList[0][iElem]+1 <<" "<< LeftFaceList[1][iElem]+1 <<" "<<
+        LeftFaceList[2][iElem]+1 <<" "<< LeftFaceList[2][iElem]+1 << endl;
     }
     
     /*--- Close TecPlot file ---*/
 
     Tecplot_File.close();
 
-    /*--- Deallocate static memory ---*/
+    /*--- Deallocate dynamic memory ---*/
 
     delete [] Point_Renumber;
     delete [] Point_Invert;
