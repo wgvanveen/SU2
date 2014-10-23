@@ -3075,6 +3075,78 @@ void CAdjEulerSolver::BC_Euler_Wall(CGeometry *geometry, CSolver **solver_contai
   
 }
 
+#ifndef CHECK
+
+void CAdjEulerSolver::BC_Sym_Plane(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics, CNumerics *visc_numerics, CConfig *config, unsigned short val_marker) {
+  
+  unsigned long iVertex, iPoint;
+  unsigned short iVar, iDim;
+  double *Normal, *V_domain, *V_sym, *Psi_domain, *Psi_sym;
+  
+  bool implicit = (config->GetKind_TimeIntScheme_AdjFlow() == EULER_IMPLICIT);
+  
+  Normal = new double[nDim];
+  Psi_domain = new double[nVar]; Psi_sym = new double[nVar];
+  
+  /*--- Loop over all the vertices ---*/
+  
+  for (iVertex = 0; iVertex < geometry->nVertex[val_marker]; iVertex++) {
+    iPoint = geometry->vertex[val_marker][iVertex]->GetNode();
+    
+    /*--- If the node belongs to the domain ---*/
+    
+    if (geometry->node[iPoint]->GetDomain()) {
+      
+      /*--- Set the normal vector ---*/
+      
+      geometry->vertex[val_marker][iVertex]->GetNormal(Normal);
+      for (iDim = 0; iDim < nDim; iDim++) Normal[iDim] = -Normal[iDim];
+      conv_numerics->SetNormal(Normal);
+      
+      /*--- Allocate the value at the infinity ---*/
+      
+      V_sym = solver_container[FLOW_SOL]->node[iPoint]->GetPrimitive();
+      V_sym[2] = 0.0;
+
+      /*--- Retrieve solution at the farfield boundary node ---*/
+      
+      V_domain = solver_container[FLOW_SOL]->node[iPoint]->GetPrimitive();
+
+      
+      conv_numerics->SetPrimitive(V_domain, V_sym);
+      
+      /*--- Adjoint flow solution at the wall ---*/
+      
+      for (iVar = 0; iVar < nVar; iVar++) {
+        Psi_domain[iVar] = node[iPoint]->GetSolution(iVar);
+        Psi_sym[iVar] = node[iPoint]->GetSolution(iVar);
+      }
+      Psi_sym[2] = 0.0;
+
+      conv_numerics->SetAdjointVar(Psi_domain, Psi_sym);
+      
+      /*--- Compute the upwind flux ---*/
+      
+      conv_numerics->ComputeResidual(Residual_i, Residual_j, Jacobian_ii, Jacobian_ij, Jacobian_ji, Jacobian_jj, config);
+      
+      /*--- Add and Subtract Residual ---*/
+      
+      LinSysRes.SubtractBlock(iPoint, Residual_i);
+      
+      /*--- Implicit contribution to the residual ---*/
+      
+      if (implicit)
+        Jacobian.SubtractBlock(iPoint, iPoint, Jacobian_ii);
+      
+    }
+  }
+  
+  delete [] Normal;
+  delete [] Psi_domain; delete [] Psi_sym;
+}
+
+#else
+
 void CAdjEulerSolver::BC_Sym_Plane(CGeometry *geometry, CSolver **solver_container, CNumerics *conv_numerics, CNumerics *visc_numerics,
                                    CConfig *config, unsigned short val_marker) {
   
@@ -3291,6 +3363,8 @@ void CAdjEulerSolver::BC_Sym_Plane(CGeometry *geometry, CSolver **solver_contain
   delete [] UnitNormal;
   delete [] Psi;
 }
+
+#endif
 
 void CAdjEulerSolver::BC_Interface_Boundary(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
                                             CConfig *config, unsigned short val_marker) {
