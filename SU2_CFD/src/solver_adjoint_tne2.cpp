@@ -3027,9 +3027,12 @@ void CAdjTNE2NSSolver::Viscous_Sensitivity(CGeometry *geometry,
                                            CConfig *config) {
   // Boolean declarations
   
+  // Classification declarations
+  unsigned short ObjFcn;
+  
   // Counter & iterator declarations
 	unsigned long iVertex, iPoint;
-	unsigned short iDim, jDim, iMarker, iVar;
+	unsigned short iDim, jDim, iMarker, iSpecies, iVar;
   
   //Geometry declarations
   double Area, eps;
@@ -3041,15 +3044,28 @@ void CAdjTNE2NSSolver::Viscous_Sensitivity(CGeometry *geometry,
   UnitNormal = new double[nDim];
   
   // Direct problem declarations
-  unsigned short T_INDEX, TVE_INDEX, VEL_INDEX;
-  double rho, H;
+  unsigned short T_INDEX, TVE_INDEX, VEL_INDEX, RHO_INDEX, RHOS_INDEX;
+  double rho, rhos, Ys, H;
   double div_vel, dnT, dnTve;
-  double mu, ktr, kve, pnorm, qp, qn, Hm;
-  double *U, *dnvel;
-  double **GradV, **sigma;
+  double *Ds, mu, ktr, kve, pnorm, qp, qn, Hm;
+  double *eves, *hs;
+  double *U, *V, *dnvel;
+  double **GV, **GY, **Js, *sIk, **sigma;
   
-  U     = NULL;
-  GradV = NULL;
+  U  = NULL;
+  GV = NULL;
+  GY = NULL;
+  Js = NULL;
+  sIk = NULL;
+  
+  hs = new double[nSpecies];
+  Js = new double*[nSpecies];
+  GY = new double*[nSpecies];
+  for (iSpecies = 0; iSpecies < nSpecies; iSpecies++) {
+    Js[iSpecies] = new double[nDim];
+    GY[iSpecies] = new double[nDim];
+  }
+  sIk = new double[nDim];
   
   dnvel = new double [nDim];
   sigma = new double *[nDim];
@@ -3062,17 +3078,36 @@ void CAdjTNE2NSSolver::Viscous_Sensitivity(CGeometry *geometry,
   double dnPsiE, dnPsiEve;
   double B1, B21, B22, B23, B24, B31, B32, B33, B34;
   double *Psi, *d, *Gtg_PsiE;
-  double **GradPsi, **SigmaPhi;
+  double **GPsi, **GsPsi, **SigmaPhi;
+  double dnPsi_k;
   
   Psi     = NULL;
   d       = NULL;
-  GradPsi = NULL;
+  GPsi    = NULL;
+  GsPsi   = NULL;
+  
+  GsPsi = new double*[nVar];
+  for (iVar = 0; iVar < nVar; iVar++)
+    GsPsi[iVar] = new double[nDim];
+  
   
   Gtg_PsiE = new double[nDim];
   SigmaPhi = new double *[nDim];
   for (iDim = 0; iDim < nDim; iDim++) {
     SigmaPhi[iDim] = new double[nDim];
   }
+  
+  int rank = MASTER_NODE;
+#ifndef NO_MPI
+#ifdef WINDOWS
+  MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+#else
+  rank = MPI::COMM_WORLD.Get_rank();
+#endif
+#endif
+  
+  /*--- Get the objective function ---*/
+  ObjFcn = config->GetKind_ObjFunc();
   
   /*--- Compute gradient of adjoint variables on the surface ---*/
   SetSurface_Gradient(geometry, config);
@@ -3084,520 +3119,458 @@ void CAdjTNE2NSSolver::Viscous_Sensitivity(CGeometry *geometry,
   Total_Sens_Press = 0.0;
   Total_Sens_Temp  = 0.0;
   
+  /*--- Get indices of primitive quantities ---*/
+  RHOS_INDEX = solver_container[TNE2_SOL]->node[0]->GetRhosIndex();
+  RHO_INDEX  = solver_container[TNE2_SOL]->node[0]->GetRhoIndex();
+  VEL_INDEX  = solver_container[TNE2_SOL]->node[0]->GetVelIndex();
+  T_INDEX    = solver_container[TNE2_SOL]->node[0]->GetTIndex();
+  TVE_INDEX  = solver_container[TNE2_SOL]->node[0]->GetTveIndex();
+  
+  
   for (iMarker = 0; iMarker < nMarker; iMarker++) {
     
     /*--- Initialize marker geometric sensitivity ---*/
     Sens_Geo[iMarker] = 0.0;
     
     
-    if ((config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX              ) ||
-        (config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX_CATALYTIC    ) ||
-        (config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX_NONCATALYTIC ) ||
-        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL             ) ||
-        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC   ) ||
-        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC)) {
-      
-      /*--- Loop over all boundary nodes ---*/
-      for (iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+    switch (config->GetMarker_All_Boundary(iMarker)) {
+      case HEAT_FLUX:
+        if (rank == MASTER_NODE)
+          cout << "ERROR!!  Must specify catalycity for boundary conditions!" << endl;
+#ifndef NO_MPI
+        MPI::Finalize();
+#else
+        exit(1);
+#endif
+        break;
         
-        iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
-        if (geometry->node[iPoint]->GetDomain()) {
+        /*-------------------------------------------*/
+        /*--- Adiabatic / Noncatalytic boundaries ---*/
+        /*-------------------------------------------*/
+        
+      case HEAT_FLUX_NONCATALYTIC:
+        
+        /*--- Loop over all boundary nodes ---*/
+        for (iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
           
-          /*--- Calculate geometric quantities ---*/
-          Normal = geometry->vertex[iMarker][iVertex]->GetNormal();
-          Area = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            Area += Normal[iDim]*Normal[iDim];
-          Area = sqrt(Area);
-          for (iDim = 0; iDim < nDim; iDim++)
-            UnitNormal[iDim] = Normal[iDim] / Area;
-          
-          /*--- Load flow quantities ---*/
-          U     = solver_container[TNE2_SOL]->node[iPoint]->GetSolution();
-          rho   = solver_container[TNE2_SOL]->node[iPoint]->GetDensity();
-          H     = solver_container[TNE2_SOL]->node[iPoint]->GetEnthalpy();
-          mu    = solver_container[TNE2_SOL]->node[iPoint]->GetLaminarViscosity();
-          ktr   = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity();
-          kve   = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity_ve();
-          GradV = solver_container[TNE2_SOL]->node[iPoint]->GetGradient_Primitive();
-          
-          VEL_INDEX = solver_container[TNE2_SOL]->node[iPoint]->GetVelIndex();
-          T_INDEX   = solver_container[TNE2_SOL]->node[iPoint]->GetTIndex();
-          TVE_INDEX = solver_container[TNE2_SOL]->node[iPoint]->GetTveIndex();
-          
-          /*--- Load adjoint quantities ---*/
-          Psi     = node[iPoint]->GetSolution();
-          GradPsi = node[iPoint]->GetGradient();
-          
-          /*--- Calculate support quantities ---*/
-          
-          // vartheta
-          vartheta = 0.0;
-          for (iVar = 0; iVar < nSpecies+nDim; iVar++)
-            vartheta += U[iVar]*Psi[iVar];
-          vartheta += rho*H*Psi[nSpecies+nDim];
-          vartheta += U[nSpecies+nDim+1]*Psi[nSpecies+nDim+1];
-          
-          // Velocity normal derivatives
-          for (iDim = 0; iDim < nDim; iDim++) {
-            dnvel[iDim] = 0.0;
-            for (jDim = 0; jDim < nDim; jDim++)
-              dnvel[iDim] += GradV[VEL_INDEX+iDim][jDim]*UnitNormal[jDim];
-          }
-          
-          // Temperature normal derivatives
-          dnT   = 0.0;
-          dnTve = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++) {
-            dnT   += GradV[T_INDEX][iDim]   * UnitNormal[iDim];
-            dnTve += GradV[TVE_INDEX][iDim] * UnitNormal[iDim];
-          }
-          
-          // Adjoint energy normal derivatives
-          dnPsiE   = 0.0;
-          dnPsiEve = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++) {
-            dnPsiE   += GradPsi[nSpecies+nDim][iDim]   * UnitNormal[iDim];
-            dnPsiEve += GradPsi[nSpecies+nDim+1][iDim] * UnitNormal[iDim];
-          }
-          
-          // Viscous stress tensor
-          div_vel = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++) {
-            div_vel += GradV[VEL_INDEX+iDim][iDim];
-            for (jDim =0 ; jDim < nDim; jDim++)
-              sigma[iDim][jDim] = 0.0;
-          }
-          for (iDim = 0; iDim < nDim; iDim++) {
-            for (jDim = 0; jDim < nDim; jDim++) {
-              sigma[iDim][jDim] += mu*(GradV[VEL_INDEX+iDim][jDim] +
-                                      GradV[VEL_INDEX+jDim][iDim]  );
-            }
-            sigma[iDim][iDim] -= 2.0/3.0 * div_vel;
-          }
-          
-          // SigmaPhi
-          div_phi = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++) {
-            div_phi += GradPsi[nSpecies+iDim][iDim];
-            for (jDim =0 ; jDim < nDim; jDim++)
-              SigmaPhi[iDim][jDim] = 0.0;
-          }
-          for (iDim = 0; iDim < nDim; iDim++) {
-            for (jDim = 0; jDim < nDim; jDim++) {
-              SigmaPhi[iDim][jDim] += GradPsi[nSpecies+iDim][jDim] +
-                                      GradPsi[nSpecies+jDim][iDim];
-            }
-            SigmaPhi[iDim][iDim] -= 2.0/3.0 * div_phi;
-          }
-          
-          /*--- B1: Convective sensitivity ---*/
-          // Note: The deltaP term is always canceled using adjoint B.C.'s
-          // and is not included in the surface sensitivities.
-          B1 = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            B1 = -vartheta * dnvel[iDim] * UnitNormal[iDim];
-          
-          /*--- B21: 1st order viscous sensitivity, diffusion ---*/
-          B21 = 0.0;
-          
-          /*--- B22: 1st-viscous sensitivity, viscosity ---*/
-          // Note: The deltaSigma term is always canceled using adjoint B.C.'s
-          // and is not included in the surface sensitivities.
-          B22 = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            for (jDim = 0; jDim < nDim; jDim++)
-              B22 -= Psi[nSpecies+nDim]*sigma[iDim][jDim]*dnvel[jDim]*UnitNormal[iDim];
-          
-          /*--- B23: 1st-viscous sensitivity, tr heat flux ---*/
-          // Note: This term is used in adjoint B.C. for isothermal cases
-          B23 = 0.0;
-          
-          /*--- B24: 1st-viscous sensitivity, ve heat flux ---*/
-          // Note: This term is used in adjoint B.C. for isothermal cases
-          B24 = 0.0;
-          
-          /*--- B31: 2nd-viscous sensitivity, diffusion ---*/
-          // Note: This term is used in adjoint B.C. for non-catalytic cases
-          B31 = 0.0;
-          
-          /*--- B32: 2nd-viscous sensitivity, viscosity ---*/
-          B32 = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++) {
-            for (jDim = 0; jDim < nDim; jDim++) {
-              B32 -= mu*(SigmaPhi[iDim][jDim]) * dnvel[jDim]*UnitNormal[iDim];
-            }
-          }
-          
-          /*--- B33: 2nd-viscous sensitivity, tr heat flux ---*/
-          B33 = 0.0;
-          if ((config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL)           ||
-              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC) ||
-              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC))
-            B33 = -ktr * dnPsiE * dnT;
-          
-          /*--- B34: 2nd-viscous sensitivity, ve heat flux ---*/
-          B34 = 0.0;
-          if ((config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL)           ||
-              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC) ||
-              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC))
-            B34 = -kve * (dnPsiE+dnPsiEve) * dnTve;
-          
-          /*--- Calculate sensitivity terms related to the objective function ---*/
-          obj_sense = 0.0;
-          switch (config->GetKind_ObjFunc()) {
-            case MAXIMUM_HEATFLUX:
-              
-              /*--- Calculate the tangential derivative of PsiE ---*/
+          iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+          if (geometry->node[iPoint]->GetDomain()) {
+            
+            /*--- Calculate geometric quantities ---*/
+            Normal = geometry->vertex[iMarker][iVertex]->GetNormal();
+            Area = 0.0;
+            for (iDim = 0; iDim < nDim; iDim++)
+              Area += Normal[iDim]*Normal[iDim];
+            Area = sqrt(Area);
+            for (iDim = 0; iDim < nDim; iDim++)
+              UnitNormal[iDim] = Normal[iDim] / Area;
+            
+            /*--- Get flow quantities ---*/
+            U    = solver_container[TNE2_SOL]->node[iPoint]->GetSolution();
+            V    = solver_container[TNE2_SOL]->node[iPoint]->GetPrimVar();
+            GV   = solver_container[TNE2_SOL]->node[iPoint]->GetGradient_Primitive();
+            Ds   = solver_container[TNE2_SOL]->node[iPoint]->GetDiffusionCoeff();
+            mu   = solver_container[TNE2_SOL]->node[iPoint]->GetLaminarViscosity();
+            ktr  = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity();
+            kve  = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity_ve();
+            eves = solver_container[TNE2_SOL]->node[iPoint]->GetEve();
+            for (iSpecies = 0; iSpecies < nSpecies; iSpecies++)
+              hs[iSpecies] = solver_container[TNE2_SOL]->node[iPoint]->
+                             CalcHs(config, V[T_INDEX], eves[iSpecies],
+                                    iSpecies);
+            
+            /*--- Calculate diffusion flux ---*/
+            rho = V[RHO_INDEX];
+            for (iDim = 0; iDim < nDim; iDim++)
+              sIk[iDim] = 0.0;
+            for (iSpecies = 0; iSpecies < nSpecies; iSpecies++) {
+              rhos = V[RHOS_INDEX+iSpecies];
+              Ys   = rhos/rho;
               for (iDim = 0; iDim < nDim; iDim++)
-                Gtg_PsiE[iDim] = GradPsi[nSpecies+nDim][iDim] - dnPsiE*UnitNormal[iDim];
-
-              /*--- Calculate leading coefficient, Xi ---*/
-              pnorm = config->GetPnormHeat();
-              Xi = solver_container[TNE2_SOL]->GetTotal_MaxHeatFlux();
-              qp = pow(Xi, pnorm);
-              Xi = 1.0/pnorm * Xi / qp;
-              
-              /*--- Term 1: \nabla_S PsiE \cdot (-k\nabla T) ---*/
+                GY[iSpecies][iDim] = 1/rho * ( GV[RHOS_INDEX+iSpecies][iDim]
+                                              -Ys*GV[RHO_INDEX][iDim]       );
+              sIk[iDim] += rho*Ds[iSpecies]*GY[iSpecies][iDim];
+            }
+            for (iSpecies = 0; iSpecies < nSpecies; iSpecies++) {
+              rhos = V[RHOS_INDEX+iSpecies];
+              Ys = rhos/rho;
               for (iDim = 0; iDim < nDim; iDim++)
-                obj_sense += Gtg_PsiE[iDim]*(-ktr*GradV[T_INDEX][iDim]
-                                             -kve*GradV[TVE_INDEX][iDim]);
-              
-              /*--- Term 2: Xi * (p-1)(-k\nabla T \cdot n)^p * 2Hm ---*/
-              qn = pow(-ktr*dnT-kve*dnTve, pnorm);
-              Hm = geometry->node[iPoint]->GetCurvature();
-              obj_sense += Xi*(pnorm-1.0)*qn*2*Hm;
-              break;
-              
-            case TOTAL_HEATFLUX:
-              cout << "Total Heatflux objective not yet implemented!  Exiting..." << endl;
-              exit(1);
-              break;
-              
-            case INVERSE_DESIGN_HEATFLUX:
-              cout << "Inverse heatflux design objective not yet implemented!  Exiting..." << endl;
-              break;
+                Js[iSpecies][iDim] = (-rho*Ds[iSpecies]*GY[iSpecies][iDim]
+                                      +Ys*sIk[iDim]);
+            }
+            
+            /*--- Calculate normal derivative of the velocity ---*/
+            for (iDim = 0; iDim < nDim; iDim++) {
+              dnvel[iDim] = 0.0;
+              for (jDim = 0; jDim < nDim; jDim++)
+                dnvel[iDim] += GV[VEL_INDEX+iDim][jDim]*UnitNormal[jDim];
+            }
+            
+            /*--- Get adjoint quantities ---*/
+            Psi     = node[iPoint]->GetSolution();
+            GPsi = node[iPoint]->GetGradient();
+            
+            /*--- Tangential derivatives of adjoint variables ---*/
+            for (iVar = 0; iVar < nVar; iVar++) {
+              dnPsi_k = 0.0;
+              for (iDim = 0; iDim < nDim; iDim++)
+                dnPsi_k += GPsi[iVar][iDim]*UnitNormal[iDim];
+              for (iDim = 0; iDim < nDim; iDim++)
+                GsPsi[iVar][iDim] = GPsi[iVar][iDim] - dnPsi_k*UnitNormal[iDim];
+            }
+            
+            /*--- Calculate SigmaPhi ---*/
+            div_phi = 0.0;
+            for (iDim = 0; iDim < nDim; iDim++) {
+              div_phi += GPsi[nSpecies+iDim][iDim];
+              for (jDim =0 ; jDim < nDim; jDim++)
+                SigmaPhi[iDim][jDim] = 0.0;
+            }
+            for (iDim = 0; iDim < nDim; iDim++) {
+              for (jDim = 0; jDim < nDim; jDim++) {
+                SigmaPhi[iDim][jDim] += GPsi[nSpecies+iDim][jDim] +
+                GPsi[nSpecies+jDim][iDim];
+              }
+              SigmaPhi[iDim][iDim] -= 2.0/3.0 * div_phi;
+            }
+            
+            /*--- Calculate sensitivities ---*/
+            // mu(SigmaPhi \cdot \vec{n})
+            B22 = 0.0;
+            for (iDim = 0; iDim < nDim; iDim++)
+              for (jDim = 0; jDim < nDim; jDim++)
+                B22 += UnitNormal[iDim]*SigmaPhi[iDim][jDim]*dnvel[jDim];
+            
+            
+            // Sum_k[GsPsirs + GsPsiE hs + GsPsiEve eves) \cdot Gs
+            B31 = 0.0;
+            for (iSpecies = 0; iSpecies < nSpecies; iSpecies++)
+              for (iDim = 0; iDim < nDim; iDim++)
+                B31 += ( GsPsi[iSpecies][iDim]
+                        +GsPsi[nSpecies+nDim][iDim]*hs[iSpecies]
+                        +GsPsi[nSpecies+nDim+1][iDim]*eves[iSpecies] )
+                     * Js[iSpecies][iDim];
+            
+            // -GsPsiE \cdot (kGT)
+            B33 = 0.0;
+            for (iDim = 0; iDim < nDim; iDim++)
+              B33 += -GsPsi[nSpecies+nDim][iDim]*(ktr*GV[T_INDEX][iDim]);
+            
+            //-(GsPsiE+GsPsiEve) \cdot (kveGTve)
+            B34 = 0.0;
+            for (iDim = 0; iDim < nDim; iDim++)
+              B34 += -( GPsi[nSpecies+nDim][iDim]
+                       +GPsi[nSpecies+nDim+1][iDim]) * (kve*GV[TVE_INDEX][iDim]);
+            
+            
+            /*--- Sum the contribution from each of the sensitivities ---*/
+            CSensitivity[iMarker][iVertex] = (B22+B31+B33+B34)*Area;
+           
+            /*--- If the sensitivity is from a sharp edge, neglect it ---*/
+            if (config->GetSens_Remove_Sharp()) {
+              eps = config->GetLimiterCoeff()*config->GetRefElemLength();
+              if ( geometry->node[iPoint]->GetSharpEdge_Distance() < config->GetSharpEdgesCoeff()*eps )
+                CSensitivity[iMarker][iVertex] = 0.0;
+            }
+            
+            /*--- Add the local sensitivity to the geometric sensitivity ---*/
+            Sens_Geo[iMarker] -= CSensitivity[iMarker][iVertex]*Area;
           }
           
-//          cout << "B1: " << B1 << endl;
-//          cout << "B21: " << B21 << endl;
-//          cout << "B22: " << B22 << endl;
-//          cout << "B23: " << B23 << endl;
-//          cout << "B24: " << B24 << endl;
-//          cout << "B31: " << B31 << endl;
-//          cout << "B32: " << B32 << endl;
-//          cout << "B33: " << B33 << endl;
-//          cout << "B34: " << B34 << endl;
-//          double tmp = 0.0;
-//          for (iDim = 0; iDim< nDim; iDim++)
-//            tmp += dnvel[iDim]*UnitNormal[iDim];
-//          cout << "tmp: " << tmp << endl;
-//          cout << "Div vel: " << div_vel << endl;
-//          cout << "GradVel: " << endl;
-//          cout << GradV[VEL_INDEX][0] << "\t" << GradV[VEL_INDEX][1] << "\t" << GradV[VEL_INDEX][2] << endl;
-//          cout << GradV[VEL_INDEX+1][0] << "\t" << GradV[VEL_INDEX+1][1] << "\t" << GradV[VEL_INDEX+1][2] << endl;
-//          cout << GradV[VEL_INDEX+2][0] << "\t" << GradV[VEL_INDEX+2][1] << "\t" << GradV[VEL_INDEX+2][2] << endl;
-//          cout << "Coord: " << geometry->node[iPoint]->GetCoord(0) << "\t" << geometry->node[iPoint]->GetCoord(1) << "\t" << geometry->node[iPoint]->GetCoord(2) << endl;
-//          cin.get();
-          
-          /*--- Gather all sensitivities for dJ/dS ---*/
-          CSensitivity[iMarker][iVertex] = (B1 - (B21+B22+B23+B24) +
-                                            (B31+B32+B33+B34)       )*Area;
-          
-          /*--- If sharp edge, set the sensitivity to 0 on that region ---*/
-          
-          if (config->GetSens_Remove_Sharp()) {
-            eps = config->GetLimiterCoeff()*config->GetRefElemLength();
-            if ( geometry->node[iPoint]->GetSharpEdge_Distance() < config->GetSharpEdgesCoeff()*eps )
-              CSensitivity[iMarker][iVertex] = 0.0;
-          }
-          
-          /*--- Accumulate for total geometric sensitivity on the marker ---*/
-          Sens_Geo[iMarker] -= CSensitivity[iMarker][iVertex];
-          
+          Total_Sens_Geo += Sens_Geo[iMarker];
         }
-      }
-      
-      /*--- Accumulate all marker geometric sensitivities ---*/
-      Total_Sens_Geo += Sens_Geo[iMarker];
+        break;
+        
+        
+        /*----------------------------------------*/
+        /*--- Adiabatic / Catalytic boundaries ---*/
+        /*----------------------------------------*/
+        
+      case HEAT_FLUX_CATALYTIC:
+        
+        break;
     }
+    
+    
+    
+    
+    
+//    
+//    if ((config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX              ) ||
+//        (config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX_CATALYTIC    ) ||
+//        (config->GetMarker_All_Boundary(iMarker) == HEAT_FLUX_NONCATALYTIC ) ||
+//        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL             ) ||
+//        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC   ) ||
+//        (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC)) {
+//      
+//      /*--- Loop over all boundary nodes ---*/
+//      for (iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
+//        
+//        iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
+//        if (geometry->node[iPoint]->GetDomain()) {
+//          
+//          /*--- Calculate geometric quantities ---*/
+//          Normal = geometry->vertex[iMarker][iVertex]->GetNormal();
+//          Area = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++)
+//            Area += Normal[iDim]*Normal[iDim];
+//          Area = sqrt(Area);
+//          for (iDim = 0; iDim < nDim; iDim++)
+//            UnitNormal[iDim] = Normal[iDim] / Area;
+//          
+//          /*--- Load flow quantities ---*/
+//          U     = solver_container[TNE2_SOL]->node[iPoint]->GetSolution();
+//          rho   = solver_container[TNE2_SOL]->node[iPoint]->GetDensity();
+//          H     = solver_container[TNE2_SOL]->node[iPoint]->GetEnthalpy();
+//          mu    = solver_container[TNE2_SOL]->node[iPoint]->GetLaminarViscosity();
+//          ktr   = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity();
+//          kve   = solver_container[TNE2_SOL]->node[iPoint]->GetThermalConductivity_ve();
+//          GV = solver_container[TNE2_SOL]->node[iPoint]->GetGradient_Primitive();
+//          
+//          VEL_INDEX = solver_container[TNE2_SOL]->node[iPoint]->GetVelIndex();
+//          T_INDEX   = solver_container[TNE2_SOL]->node[iPoint]->GetTIndex();
+//          TVE_INDEX = solver_container[TNE2_SOL]->node[iPoint]->GetTveIndex();
+//          
+//          /*--- Load adjoint quantities ---*/
+//          Psi     = node[iPoint]->GetSolution();
+//          GPsi = node[iPoint]->GetGradient();
+//          
+//          /*--- Calculate support quantities ---*/
+//          
+//          // vartheta
+//          vartheta = 0.0;
+//          for (iVar = 0; iVar < nSpecies+nDim; iVar++)
+//            vartheta += U[iVar]*Psi[iVar];
+//          vartheta += rho*H*Psi[nSpecies+nDim];
+//          vartheta += U[nSpecies+nDim+1]*Psi[nSpecies+nDim+1];
+//          
+//          // Velocity normal derivatives
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            dnvel[iDim] = 0.0;
+//            for (jDim = 0; jDim < nDim; jDim++)
+//              dnvel[iDim] += GV[VEL_INDEX+iDim][jDim]*UnitNormal[jDim];
+//          }
+//          
+//          // Temperature normal derivatives
+//          dnT   = 0.0;
+//          dnTve = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            dnT   += GV[T_INDEX][iDim]   * UnitNormal[iDim];
+//            dnTve += GV[TVE_INDEX][iDim] * UnitNormal[iDim];
+//          }
+//          
+//          // Adjoint energy normal derivatives
+//          dnPsiE   = 0.0;
+//          dnPsiEve = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            dnPsiE   += GPsi[nSpecies+nDim][iDim]   * UnitNormal[iDim];
+//            dnPsiEve += GPsi[nSpecies+nDim+1][iDim] * UnitNormal[iDim];
+//          }
+//          
+//          // Viscous stress tensor
+//          div_vel = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            div_vel += GV[VEL_INDEX+iDim][iDim];
+//            for (jDim =0 ; jDim < nDim; jDim++)
+//              sigma[iDim][jDim] = 0.0;
+//          }
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            for (jDim = 0; jDim < nDim; jDim++) {
+//              sigma[iDim][jDim] += mu*(GV[VEL_INDEX+iDim][jDim] +
+//                                      GV[VEL_INDEX+jDim][iDim]  );
+//            }
+//            sigma[iDim][iDim] -= 2.0/3.0 * div_vel;
+//          }
+//          
+//          // SigmaPhi
+//          div_phi = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            div_phi += GPsi[nSpecies+iDim][iDim];
+//            for (jDim =0 ; jDim < nDim; jDim++)
+//              SigmaPhi[iDim][jDim] = 0.0;
+//          }
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            for (jDim = 0; jDim < nDim; jDim++) {
+//              SigmaPhi[iDim][jDim] += GPsi[nSpecies+iDim][jDim] +
+//                                      GPsi[nSpecies+jDim][iDim];
+//            }
+//            SigmaPhi[iDim][iDim] -= 2.0/3.0 * div_phi;
+//          }
+//          
+//          /*--- B1: Convective sensitivity ---*/
+//          // Note: The deltaP term is always canceled using adjoint B.C.'s
+//          // and is not included in the surface sensitivities.
+//          B1 = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++)
+//            B1 = -vartheta * dnvel[iDim] * UnitNormal[iDim];
+//          
+//          /*--- B21: 1st order viscous sensitivity, diffusion ---*/
+//          B21 = 0.0;
+//          
+//          /*--- B22: 1st-viscous sensitivity, viscosity ---*/
+//          // Note: The deltaSigma term is always canceled using adjoint B.C.'s
+//          // and is not included in the surface sensitivities.
+//          B22 = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++)
+//            for (jDim = 0; jDim < nDim; jDim++)
+//              B22 -= Psi[nSpecies+nDim]*sigma[iDim][jDim]*dnvel[jDim]*UnitNormal[iDim];
+//          
+//          /*--- B23: 1st-viscous sensitivity, tr heat flux ---*/
+//          // Note: This term is used in adjoint B.C. for isothermal cases
+//          B23 = 0.0;
+//          
+//          /*--- B24: 1st-viscous sensitivity, ve heat flux ---*/
+//          // Note: This term is used in adjoint B.C. for isothermal cases
+//          B24 = 0.0;
+//          
+//          /*--- B31: 2nd-viscous sensitivity, diffusion ---*/
+//          // Note: This term is used in adjoint B.C. for non-catalytic cases
+//          B31 = 0.0;
+//          
+//          /*--- B32: 2nd-viscous sensitivity, viscosity ---*/
+//          B32 = 0.0;
+//          for (iDim = 0; iDim < nDim; iDim++) {
+//            for (jDim = 0; jDim < nDim; jDim++) {
+//              B32 -= mu*(SigmaPhi[iDim][jDim]) * dnvel[jDim]*UnitNormal[iDim];
+//            }
+//          }
+//          
+//          /*--- B33: 2nd-viscous sensitivity, tr heat flux ---*/
+//          B33 = 0.0;
+//          if ((config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL)           ||
+//              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC) ||
+//              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC))
+//            B33 = -ktr * dnPsiE * dnT;
+//          
+//          /*--- B34: 2nd-viscous sensitivity, ve heat flux ---*/
+//          B34 = 0.0;
+//          if ((config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL)           ||
+//              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_CATALYTIC) ||
+//              (config->GetMarker_All_Boundary(iMarker) == ISOTHERMAL_NONCATALYTIC))
+//            B34 = -kve * (dnPsiE+dnPsiEve) * dnTve;
+//          
+//          /*--- Calculate sensitivity terms related to the objective function ---*/
+//          obj_sense = 0.0;
+//          switch (config->GetKind_ObjFunc()) {
+//            case MAXIMUM_HEATFLUX:
+//              
+//              /*--- Calculate the tangential derivative of PsiE ---*/
+//              for (iDim = 0; iDim < nDim; iDim++)
+//                Gtg_PsiE[iDim] = GPsi[nSpecies+nDim][iDim] - dnPsiE*UnitNormal[iDim];
+//
+//              /*--- Calculate leading coefficient, Xi ---*/
+//              pnorm = config->GetPnormHeat();
+//              Xi = solver_container[TNE2_SOL]->GetTotal_MaxHeatFlux();
+//              qp = pow(Xi, pnorm);
+//              Xi = 1.0/pnorm * Xi / qp;
+//              
+//              /*--- Term 1: \nabla_S PsiE \cdot (-k\nabla T) ---*/
+//              for (iDim = 0; iDim < nDim; iDim++)
+//                obj_sense += Gtg_PsiE[iDim]*(-ktr*GV[T_INDEX][iDim]
+//                                             -kve*GV[TVE_INDEX][iDim]);
+//              
+//              /*--- Term 2: Xi * (p-1)(-k\nabla T \cdot n)^p * 2Hm ---*/
+//              qn = pow(-ktr*dnT-kve*dnTve, pnorm);
+//              Hm = geometry->node[iPoint]->GetCurvature();
+//              obj_sense += Xi*(pnorm-1.0)*qn*2*Hm;
+//              break;
+//              
+//            case TOTAL_HEATFLUX:
+//              cout << "Total Heatflux objective not yet implemented!  Exiting..." << endl;
+//              exit(1);
+//              break;
+//              
+//            case INVERSE_DESIGN_HEATFLUX:
+//              cout << "Inverse heatflux design objective not yet implemented!  Exiting..." << endl;
+//              break;
+//          }
+//          
+////          cout << "B1: " << B1 << endl;
+////          cout << "B21: " << B21 << endl;
+////          cout << "B22: " << B22 << endl;
+////          cout << "B23: " << B23 << endl;
+////          cout << "B24: " << B24 << endl;
+////          cout << "B31: " << B31 << endl;
+////          cout << "B32: " << B32 << endl;
+////          cout << "B33: " << B33 << endl;
+////          cout << "B34: " << B34 << endl;
+////          double tmp = 0.0;
+////          for (iDim = 0; iDim< nDim; iDim++)
+////            tmp += dnvel[iDim]*UnitNormal[iDim];
+////          cout << "tmp: " << tmp << endl;
+////          cout << "Div vel: " << div_vel << endl;
+////          cout << "GradVel: " << endl;
+////          cout << GradV[VEL_INDEX][0] << "\t" << GradV[VEL_INDEX][1] << "\t" << GradV[VEL_INDEX][2] << endl;
+////          cout << GradV[VEL_INDEX+1][0] << "\t" << GradV[VEL_INDEX+1][1] << "\t" << GradV[VEL_INDEX+1][2] << endl;
+////          cout << GradV[VEL_INDEX+2][0] << "\t" << GradV[VEL_INDEX+2][1] << "\t" << GradV[VEL_INDEX+2][2] << endl;
+////          cout << "Coord: " << geometry->node[iPoint]->GetCoord(0) << "\t" << geometry->node[iPoint]->GetCoord(1) << "\t" << geometry->node[iPoint]->GetCoord(2) << endl;
+////          cin.get();
+//          
+//          /*--- Gather all sensitivities for dJ/dS ---*/
+//          CSensitivity[iMarker][iVertex] = (B1 - (B21+B22+B23+B24) +
+//                                            (B31+B32+B33+B34)       )*Area;
+//          
+//          /*--- If sharp edge, set the sensitivity to 0 on that region ---*/
+//          
+//          if (config->GetSens_Remove_Sharp()) {
+//            eps = config->GetLimiterCoeff()*config->GetRefElemLength();
+//            if ( geometry->node[iPoint]->GetSharpEdge_Distance() < config->GetSharpEdgesCoeff()*eps )
+//              CSensitivity[iMarker][iVertex] = 0.0;
+//          }
+//          
+//          /*--- Accumulate for total geometric sensitivity on the marker ---*/
+//          Sens_Geo[iMarker] -= CSensitivity[iMarker][iVertex];
+//          
+//        }
+//      }
+//      
+//      /*--- Accumulate all marker geometric sensitivities ---*/
+//      Total_Sens_Geo += Sens_Geo[iMarker];
+//    }
   }
   
-  /*--- Farfield Sensitivity (Mach, AoA, Press, Temp), only for compressible flows ---*/
-  
-//  if (compressible) {
-//    
-//    for (iMarker = 0; iMarker < nMarker; iMarker++) {
-//      
-//      if (config->GetMarker_All_Boundary(iMarker) == FAR_FIELD) {
-//        
-//        Sens_Mach[iMarker]  = 0.0;
-//        Sens_AoA[iMarker]   = 0.0;
-//        Sens_Press[iMarker] = 0.0;
-//        Sens_Temp[iMarker]  = 0.0;
-//        
-//        for (iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
-//          iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
-//          
-//          if (geometry->node[iPoint]->GetDomain()) {
-//            Psi = node[iPoint]->GetSolution();
-//            U = solver_container[FLOW_SOL]->node[iPoint]->GetSolution();
-//            Normal = geometry->vertex[iMarker][iVertex]->GetNormal();
-//            
-//            Mach_Inf   = config->GetMach_FreeStreamND();
-//            if (grid_movement) Mach_Inf = config->GetMach_Motion();
-//            
-//            r = U[0]; ru = U[1]; rv = U[2];
-//            if (nDim == 2) { rw = 0.0; rE = U[3]; }
-//            else { rw = U[3]; rE = U[4]; }
-//            p = Gamma_Minus_One*(rE-(ru*ru + rv*rv + rw*rw)/(2*r));
-//            
-//            Area = 0.0; for (iDim = 0; iDim < nDim; iDim++) Area += Normal[iDim]*Normal[iDim];
-//            Area = sqrt(Area);
-//            for (iDim = 0; iDim < nDim; iDim++) UnitNormal[iDim] = -Normal[iDim]/Area;
-//            
-//            H = (rE + p)/r;
-//            
-//            dp_dr = Gamma_Minus_One*(ru*ru + rv*rv + rw*rw)/(2*r*r);
-//            dp_dru = -Gamma_Minus_One*ru/r;
-//            dp_drv = -Gamma_Minus_One*rv/r;
-//            if (nDim == 2) { dp_drw = 0.0; dp_drE = Gamma_Minus_One; }
-//            else { dp_drw = -Gamma_Minus_One*rw/r; dp_drE = Gamma_Minus_One; }
-//            
-//            dH_dr = (-H + dp_dr)/r; dH_dru = dp_dru/r; dH_drv = dp_drv/r;
-//            if (nDim == 2) { dH_drw = 0.0; dH_drE = (1 + dp_drE)/r; }
-//            else { dH_drw = dp_drw/r; dH_drE = (1 + dp_drE)/r; }
-//            
-//            if (nDim == 2) {
-//              Jacobian_j[0][0] = 0.0;
-//              Jacobian_j[1][0] = Area*UnitNormal[0];
-//              Jacobian_j[2][0] = Area*UnitNormal[1];
-//              Jacobian_j[3][0] = 0.0;
-//              
-//              Jacobian_j[0][1] = (-(ru*ru)/(r*r) + dp_dr)*Area*UnitNormal[0] + (-(ru*rv)/(r*r))*Area*UnitNormal[1];
-//              Jacobian_j[1][1] = (2*ru/r + dp_dru)*Area*UnitNormal[0] + (rv/r)*Area*UnitNormal[1];
-//              Jacobian_j[2][1] = (dp_drv)*Area*UnitNormal[0] + (ru/r)*Area*UnitNormal[1];
-//              Jacobian_j[3][1] = (dp_drE)*Area*UnitNormal[0];
-//              
-//              Jacobian_j[0][2] = (-(ru*rv)/(r*r))*Area*UnitNormal[0] + (-(rv*rv)/(r*r) + dp_dr)*Area*UnitNormal[1];
-//              Jacobian_j[1][2] = (rv/r)*Area*UnitNormal[0] + (dp_dru)*Area*UnitNormal[1];
-//              Jacobian_j[2][2] = (ru/r)*Area*UnitNormal[0] + (2*rv/r + dp_drv)*Area*UnitNormal[1];
-//              Jacobian_j[3][2] = (dp_drE)*Area*UnitNormal[1];
-//              
-//              Jacobian_j[0][3] = (ru*dH_dr)*Area*UnitNormal[0] + (rv*dH_dr)*Area*UnitNormal[1];
-//              Jacobian_j[1][3] = (H + ru*dH_dru)*Area*UnitNormal[0] + (rv*dH_dru)*Area*UnitNormal[1];
-//              Jacobian_j[2][3] = (ru*dH_drv)*Area*UnitNormal[0] + (H + rv*dH_drv)*Area*UnitNormal[1];
-//              Jacobian_j[3][3] = (ru*dH_drE)*Area*UnitNormal[0] + (rv*dH_drE)*Area*UnitNormal[1];
-//            }
-//            else {
-//              Jacobian_j[0][0] = 0.0;
-//              Jacobian_j[1][0] = Area*UnitNormal[0];
-//              Jacobian_j[2][0] = Area*UnitNormal[1];
-//              Jacobian_j[3][0] = Area*UnitNormal[2];
-//              Jacobian_j[4][0] = 0.0;
-//              
-//              Jacobian_j[0][1] = (-(ru*ru)/(r*r) + dp_dr)*Area*UnitNormal[0] + (-(ru*rv)/(r*r))*Area*UnitNormal[1] + (-(ru*rw)/(r*r))*Area*UnitNormal[2];
-//              Jacobian_j[1][1] = (2*ru/r + dp_dru)*Area*UnitNormal[0] + (rv/r)*Area*UnitNormal[1] + (rw/r)*Area*UnitNormal[2];
-//              Jacobian_j[2][1] = (dp_drv)*Area*UnitNormal[0] + (ru/r)*Area*UnitNormal[1];
-//              Jacobian_j[3][1] = (dp_drw)*Area*UnitNormal[0] + (ru/r)*Area*UnitNormal[2];
-//              Jacobian_j[4][1] = (dp_drE)*Area*UnitNormal[0];
-//              
-//              Jacobian_j[0][2] = (-(ru*rv)/(r*r))*Area*UnitNormal[0] + (-(rv*rv)/(r*r) + dp_dr)*Area*UnitNormal[1] + (-(rv*rw)/(r*r))*Area*UnitNormal[2];
-//              Jacobian_j[1][2] = (rv/r)*Area*UnitNormal[0] + (dp_dru)*Area*UnitNormal[1];
-//              Jacobian_j[2][2] = (ru/r)*Area*UnitNormal[0] + (2*rv/r + dp_drv)*Area*UnitNormal[1] + (rw/r)*Area*UnitNormal[2];
-//              Jacobian_j[3][2] = (dp_drw)*Area*UnitNormal[1] + (rv/r)*Area*UnitNormal[2];
-//              Jacobian_j[4][2] = (dp_drE)*Area*UnitNormal[1];
-//              
-//              Jacobian_j[0][3] = (-(ru*rw)/(r*r))*Area*UnitNormal[0] + (-(rv*rw)/(r*r))*Area*UnitNormal[1] + (-(rw*rw)/(r*r) + dp_dr)*Area*UnitNormal[2];
-//              Jacobian_j[1][3] = (rw/r)*Area*UnitNormal[0] + (dp_dru)*Area*UnitNormal[2];
-//              Jacobian_j[2][3] = (rw/r)*Area*UnitNormal[1] + (dp_drv)*Area*UnitNormal[2];
-//              Jacobian_j[3][3] = (ru/r)*Area*UnitNormal[0] + (rv/r)*Area*UnitNormal[1] + (2*rw/r + dp_drw)*Area*UnitNormal[2];
-//              Jacobian_j[4][3] = (dp_drE)*Area*UnitNormal[2];
-//              
-//              Jacobian_j[0][4] = (ru*dH_dr)*Area*UnitNormal[0] + (rv*dH_dr)*Area*UnitNormal[1] + (rw*dH_dr)*Area*UnitNormal[2];
-//              Jacobian_j[1][4] = (H + ru*dH_dru)*Area*UnitNormal[0] + (rv*dH_dru)*Area*UnitNormal[1] + (rw*dH_dru)*Area*UnitNormal[2];
-//              Jacobian_j[2][4] = (ru*dH_drv)*Area*UnitNormal[0] + (H + rv*dH_drv)*Area*UnitNormal[1] + (rw*dH_drv)*Area*UnitNormal[2];
-//              Jacobian_j[3][4] = (ru*dH_drw)*Area*UnitNormal[0] + (rv*dH_drw)*Area*UnitNormal[1] + (H + rw*dH_drw)*Area*UnitNormal[2];
-//              Jacobian_j[4][4] = (ru*dH_drE)*Area*UnitNormal[0] + (rv*dH_drE)*Area*UnitNormal[1] + (rw*dH_drE)*Area*UnitNormal[2];
-//            }
-//            
-//            /*--- Mach number sensitivity ---*/
-//            
-//            USens[0] = 0.0; USens[1] = ru/Mach_Inf; USens[2] = rv/Mach_Inf;
-//            if (nDim == 2) { USens[3] = Gamma*Mach_Inf*p; }
-//            else { USens[3] = rw/Mach_Inf; USens[4] = Gamma*Mach_Inf*p; }
-//            for (iPos = 0; iPos < nVar; iPos++) {
-//              for (jPos = 0; jPos < nVar; jPos++) {
-//                Sens_Mach[iMarker] += Psi[iPos]*Jacobian_j[jPos][iPos]*USens[jPos];
-//              }
-//            }
-//            
-//            /*--- AoA sensitivity ---*/
-//            
-//            USens[0] = 0.0;
-//            if (nDim == 2) { USens[1] = -rv; USens[2] = ru; USens[3] = 0.0; }
-//            else { USens[1] = -rw; USens[2] = 0.0; USens[3] = ru; USens[4] = 0.0; }
-//            for (iPos = 0; iPos < nVar; iPos++) {
-//              for (jPos = 0; jPos < nVar; jPos++) {
-//                Sens_AoA[iMarker] += Psi[iPos]*Jacobian_j[jPos][iPos]*USens[jPos];
-//              }
-//            }
-//            
-//            /*--- Pressure sensitivity ---*/
-//            
-//            USens[0] = r/p; USens[1] = ru/p; USens[2] = rv/p;
-//            if (nDim == 2) { USens[3] = rE/p; }
-//            else { USens[3] = rw/p; USens[4] = rE/p; }
-//            for (iPos = 0; iPos < nVar; iPos++) {
-//              for (jPos = 0; jPos < nVar; jPos++) {
-//                Sens_Press[iMarker] += Psi[iPos]*Jacobian_j[jPos][iPos]*USens[jPos];
-//              }
-//            }
-//            
-//            /*--- Temperature sensitivity ---*/
-//            
-//            T = p/(r*Gas_Constant);
-//            USens[0] = -r/T; USens[1] = 0.5*ru/T; USens[2] = 0.5*rv/T;
-//            if (nDim == 2) { USens[3] = (ru*ru + rv*rv + rw*rw)/(r*T); }
-//            else { USens[3] = 0.5*rw/T; USens[4] = (ru*ru + rv*rv + rw*rw)/(r*T); }
-//            for (iPos = 0; iPos < nVar; iPos++) {
-//              for (jPos = 0; jPos < nVar; jPos++) {
-//                Sens_Temp[iMarker] += Psi[iPos]*Jacobian_j[jPos][iPos]*USens[jPos];
-//              }
-//            }
-//          }
-//        }
-//        Total_Sens_Mach -= Sens_Mach[iMarker];
-//        Total_Sens_AoA -= Sens_AoA[iMarker];
-//        Total_Sens_Press -= Sens_Press[iMarker];
-//        Total_Sens_Temp -= Sens_Temp[iMarker];
-//      }
-//    }
-//    
-//    /*--- Explicit contribution from objective function quantity ---*/
-//    
-//    for (iMarker = 0; iMarker < nMarker; iMarker++) {
-//      
-//      if (config->GetMarker_All_Boundary(iMarker) == EULER_WALL) {
-//        
-//        Sens_Mach[iMarker]  = 0.0;
-//        Sens_AoA[iMarker]   = 0.0;
-//        Sens_Press[iMarker] = 0.0;
-//        Sens_Temp[iMarker]  = 0.0;
-//        
-//        for (iVertex = 0; iVertex < geometry->nVertex[iMarker]; iVertex++) {
-//          iPoint = geometry->vertex[iMarker][iVertex]->GetNode();
-//          
-//          if (geometry->node[iPoint]->GetDomain()) {
-//            
-//            U = solver_container[FLOW_SOL]->node[iPoint]->GetSolution();
-//            Normal = geometry->vertex[iMarker][iVertex]->GetNormal();
-//            p = solver_container[FLOW_SOL]->node[iPoint]->GetPressure();
-//            
-//            Mach_Inf   = config->GetMach_FreeStreamND();
-//            if (grid_movement) Mach_Inf = config->GetMach_Motion();
-//            
-//            d = node[iPoint]->GetForceProj_Vector();
-//            Area = 0.0; for (iDim = 0; iDim < nDim; iDim++) Area += Normal[iDim]*Normal[iDim];
-//            Area = sqrt(Area);
-//            for (iDim = 0; iDim < nDim; iDim++) UnitNormal[iDim] = -Normal[iDim]/Area;
-//            
-//            /*--- Mach number sensitivity ---*/
-//            
-//            for (iPos = 0; iPos < nDim; iPos++) Dd[iPos] = -(2/Mach_Inf)*d[iPos];
-//            for (iPos = 0; iPos < nDim; iPos++) Sens_Mach[iMarker] += p*Dd[iPos]*Area*UnitNormal[iPos];
-//            
-//            /*--- AoA sensitivity ---*/
-//            /* Coefficients with an explicit AoA dependence - NOTE: Still need to implement right dependency for EFFICIENCY */
-//            if (config->GetKind_ObjFunc() == DRAG_COEFFICIENT || config->GetKind_ObjFunc() == LIFT_COEFFICIENT || config->GetKind_ObjFunc() == SIDEFORCE_COEFFICIENT || config->GetKind_ObjFunc() == EQUIVALENT_AREA || config->GetKind_ObjFunc() == NEARFIELD_PRESSURE) {
-//            	if (nDim == 2) {
-//            		D[0][0] = 0.0; D[0][1] = -1.0;
-//            		D[1][0] = 1.0; D[1][1] = 0.0;
-//            	}
-//            	else {
-//            		D[0][0] = 0.0; D[0][1] = 0.0; D[0][2] = -1.0;
-//            		D[1][0] = 0.0; D[1][1] = 0.0; D[1][2] = 0.0;
-//            		D[2][0] = 1.0; D[2][1] = 0.0; D[2][2] = 0.0;
-//            	}
-//            	for (iPos = 0; iPos < nDim; iPos++) Dd[iPos] = 0.0;
-//            	for (iPos = 0; iPos < nDim; iPos++) {
-//            		for (jPos = 0; jPos < nDim; jPos++)
-//                  Dd[iPos] += D[iPos][jPos]*d[jPos];
-//            	}
-//            }
-//            /* Coefficients with no explicit AoA dependece */
-//            else {
-//            	for (iPos = 0; iPos<nDim; iPos++) Dd[iPos] = 0.0;
-//            }
-//            
-//            for (iPos = 0; iPos < nDim; iPos++)
-//              Sens_AoA[iMarker] += p*Dd[iPos]*Area*UnitNormal[iPos];
-//            
-//            /*--- Pressure sensitivity ---*/
-//            
-//            for (iPos = 0; iPos<nDim; iPos++) Dd[iPos] = -(1/p)*d[iPos];
-//            for (iPos = 0; iPos<nDim; iPos++)
-//              Sens_Press[iMarker] += p*Dd[iPos]*Area*UnitNormal[iPos];
-//            
-//            /*--- Temperature sensitivity ---*/
-//            
-//            for (iPos = 0; iPos<nDim; iPos++) Dd[iPos] = 0.0;
-//            for (iPos = 0; iPos<nDim; iPos++)
-//              Sens_Temp[iMarker] += p*Dd[iPos]*Area*UnitNormal[iPos];
-//            
-//          }
-//        }
-//        
-//        Total_Sens_Mach   += Sens_Mach[iMarker];
-//        Total_Sens_AoA    += Sens_AoA[iMarker];
-//        Total_Sens_Press  += Sens_Press[iMarker];
-//        Total_Sens_Temp   += Sens_Temp[iMarker];
-//        
-//      }
-//    }
-//  }
   
 #ifndef NO_MPI
   
   double MyTotal_Sens_Geo   = Total_Sens_Geo;     Total_Sens_Geo = 0.0;
-//  double MyTotal_Sens_Mach  = Total_Sens_Mach;    Total_Sens_Mach = 0.0;
-//  double MyTotal_Sens_AoA   = Total_Sens_AoA;     Total_Sens_AoA = 0.0;
-//  double MyTotal_Sens_Press = Total_Sens_Press;   Total_Sens_Press = 0.0;
-//  double MyTotal_Sens_Temp  = Total_Sens_Temp;    Total_Sens_Temp = 0.0;
   
 #ifdef WINDOWS
   MPI_Allreduce(&MyTotal_Sens_Geo, &Total_Sens_Geo, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-//  MPI_Allreduce(&MyTotal_Sens_Mach, &Total_Sens_Mach, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-//  MPI_Allreduce(&MyTotal_Sens_AoA, &Total_Sens_AoA, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-//  MPI_Allreduce(&MyTotal_Sens_Press, &Total_Sens_Press, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-//  MPI_Allreduce(&MyTotal_Sens_Temp, &Total_Sens_Temp, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 #else
   MPI::COMM_WORLD.Allreduce(&MyTotal_Sens_Geo, &Total_Sens_Geo, 1, MPI::DOUBLE, MPI::SUM);
-//  MPI::COMM_WORLD.Allreduce(&MyTotal_Sens_Mach, &Total_Sens_Mach, 1, MPI::DOUBLE, MPI::SUM);
-//  MPI::COMM_WORLD.Allreduce(&MyTotal_Sens_AoA, &Total_Sens_AoA, 1, MPI::DOUBLE, MPI::SUM);
-//  MPI::COMM_WORLD.Allreduce(&MyTotal_Sens_Press, &Total_Sens_Press, 1, MPI::DOUBLE, MPI::SUM);
-//  MPI::COMM_WORLD.Allreduce(&MyTotal_Sens_Temp, &Total_Sens_Temp, 1, MPI::DOUBLE, MPI::SUM);
 #endif
   
 #endif
   
   /*--- Deallocate arrays ---*/
-  
+
   // Geometric arrays
   delete [] UnitNormal;
   
   // Flow solution arrays
+  delete [] hs;
+  for (iSpecies = 0; iSpecies < nSpecies; iSpecies++) {
+    delete [] Js[iSpecies];
+    delete [] GY[iSpecies];
+  }
+  delete [] Js;
+  delete [] GY;
+  delete [] sIk;
+  
   delete [] dnvel;
   for (iDim = 0; iDim < nDim; iDim++)
     delete [] sigma[iDim];
   delete [] sigma;
 
   // Adjoint solution arrays
+  for (iVar = 0; iVar < nVar; iVar++)
+    delete [] GsPsi[iVar];
+  delete [] GsPsi;
+  delete [] Gtg_PsiE;
   for (iDim = 0; iDim < nDim; iDim++) {
     delete [] SigmaPhi[iDim];
   }
   delete [] SigmaPhi;
-  delete [] Gtg_PsiE;
   
 }
 
