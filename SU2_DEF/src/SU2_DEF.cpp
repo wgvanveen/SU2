@@ -2,7 +2,7 @@
  * \file SU2_DEF.cpp
  * \brief Main file of Mesh Deformation Code (SU2_DEF).
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -91,9 +91,9 @@ int main(int argc, char *argv[]) {
   
   /*--- Check the orientation before computing geometrical quantities ---*/
   
-  if (rank == MASTER_NODE) cout << "Checking the numerical grid orientation." <<endl;
-  geometry[ZONE_0]->SetBoundVolume();
-  
+  if (rank == MASTER_NODE) cout << "Checking the numerical grid orientation of the interior elements." <<endl;
+  geometry[ZONE_0]->Check_IntElem_Orientation(config[ZONE_0]);
+
   /*--- Create the edge structure ---*/
   
   if (rank == MASTER_NODE) cout << "Identify edges and vertices." <<endl;

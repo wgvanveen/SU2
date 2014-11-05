@@ -2,7 +2,7 @@
  * \file numerics_direct_mean.cpp
  * \brief This file contains all the convective term discretization.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -513,8 +513,8 @@ void CCentLax_Flow::ComputeResidual(double *val_residual, double **val_Jacobian_
   Local_Lambda_j = (fabs(ProjVelocity_j)+SoundSpeed_j*Area);
   MeanLambda = 0.5*(Local_Lambda_i+Local_Lambda_j);
   
-  Phi_i = pow(Lambda_i/(4.0*MeanLambda),Param_p);
-  Phi_j = pow(Lambda_j/(4.0*MeanLambda),Param_p);
+  Phi_i = pow(Lambda_i/(4.0*MeanLambda), Param_p);
+  Phi_j = pow(Lambda_j/(4.0*MeanLambda), Param_p);
   StretchingFactor = 4.0*Phi_i*Phi_j/(Phi_i+Phi_j);
   
   sc0 = 3.0*(double(Neighbor_i)+double(Neighbor_j))/(double(Neighbor_i)*double(Neighbor_j));
@@ -1376,6 +1376,308 @@ void CUpwRoe_Flow::ComputeResidual(double *val_residual, double **val_Jacobian_i
   
 }
 
+CUpwGeneralRoe_Flow::CUpwGeneralRoe_Flow(unsigned short val_nDim, unsigned short val_nVar, CConfig *config) : CNumerics(val_nDim, val_nVar, config) {
+
+  implicit = (config->GetKind_TimeIntScheme_Flow() == EULER_IMPLICIT);
+  grid_movement = config->GetGrid_Movement();
+
+
+  Diff_U = new double [nVar];
+  Velocity_i = new double [nDim];
+  Velocity_j = new double [nDim];
+  RoeVelocity = new double [nDim];
+  delta_vel  = new double [nDim];
+  delta_wave = new double [nVar];
+  ProjFlux_i = new double [nVar];
+  ProjFlux_j = new double [nVar];
+  Lambda = new double [nVar];
+  Epsilon = new double [nVar];
+  P_Tensor = new double* [nVar];
+  invP_Tensor = new double* [nVar];
+  for (iVar = 0; iVar < nVar; iVar++) {
+    P_Tensor[iVar] = new double [nVar];
+    invP_Tensor[iVar] = new double [nVar];
+  }
+}
+
+CUpwGeneralRoe_Flow::~CUpwGeneralRoe_Flow(void) {
+
+  delete [] Diff_U;
+  delete [] Velocity_i;
+  delete [] Velocity_j;
+  delete [] RoeVelocity;
+  delete [] delta_vel;
+  delete [] delta_wave;
+  delete [] ProjFlux_i;
+  delete [] ProjFlux_j;
+  delete [] Lambda;
+  delete [] Epsilon;
+  for (iVar = 0; iVar < nVar; iVar++) {
+    delete [] P_Tensor[iVar];
+    delete [] invP_Tensor[iVar];
+  }
+  delete [] P_Tensor;
+  delete [] invP_Tensor;
+
+}
+
+void CUpwGeneralRoe_Flow::ComputeResidual(double *val_residual, double **val_Jacobian_i, double **val_Jacobian_j, CConfig *config) {
+
+	/*--- Face area (norm or the normal vector) ---*/
+
+  Area = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++)
+	Area += Normal[iDim]*Normal[iDim];
+  Area = sqrt(Area);
+
+	/*-- Unit Normal ---*/
+
+  for (iDim = 0; iDim < nDim; iDim++)
+		UnitNormal[iDim] = Normal[iDim]/Area;
+
+  /*--- Primitive variables at point i ---*/
+
+
+
+  Velocity2_i = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++) {
+	  Velocity_i[iDim] = V_i[iDim+1];
+	  Velocity2_i += Velocity_i[iDim]*Velocity_i[iDim];
+  }
+
+  Pressure_i = V_i[nDim+1];
+  Density_i = V_i[nDim+2];
+  Enthalpy_i = V_i[nDim+3];
+  Energy_i = Enthalpy_i - Pressure_i/Density_i;
+  StaticEnthalpy_i = Enthalpy_i - 0.5*Velocity2_i;
+  StaticEnergy_i = StaticEnthalpy_i - Pressure_i/Density_i;
+
+  Kappa_i = S_i[1]/Density_i;
+  Chi_i = S_i[0] - Kappa_i*StaticEnergy_i;
+  SoundSpeed_i = sqrt(Chi_i + StaticEnthalpy_i*Kappa_i);
+
+  /*--- Primitive variables at point j ---*/
+
+
+  Velocity2_j = 0.0;
+  for (iDim = 0; iDim < nDim; iDim++){
+    Velocity_j[iDim] = V_j[iDim+1];
+    Velocity2_j += Velocity_j[iDim]*Velocity_j[iDim];
+
+  }
+
+  Pressure_j = V_j[nDim+1];
+  Density_j = V_j[nDim+2];
+  Enthalpy_j = V_j[nDim+3];
+  Energy_j = Enthalpy_j - Pressure_j/Density_j;
+
+  StaticEnthalpy_j = Enthalpy_j - 0.5*Velocity2_j;
+  StaticEnergy_j = StaticEnthalpy_j - Pressure_j/Density_j;
+
+  Kappa_j = S_j[1]/Density_j;
+  Chi_j = S_j[0] - Kappa_j*StaticEnergy_j;
+  SoundSpeed_j = sqrt(Chi_j + StaticEnthalpy_j*Kappa_j);
+
+  /*--- Recompute conservative variables ---*/
+
+  double U_i[5], U_j[5];
+  U_i[0] = Density_i; U_j[0] = Density_j;
+  for (iDim = 0; iDim < nDim; iDim++) {
+    U_i[iDim+1] = Density_i*Velocity_i[iDim]; U_j[iDim+1] = Density_j*Velocity_j[iDim];
+  }
+  U_i[nDim+1] = Density_i*Energy_i; U_j[nDim+1] = Density_j*Energy_j;
+
+//	/*--- Roe-averaged variables at interface between i & j ---*/
+
+    ComputeRoeAverage();
+
+
+	/*--- Compute ProjFlux_i ---*/
+	GetInviscidProjFlux(&Density_i, Velocity_i, &Pressure_i, &Enthalpy_i, Normal, ProjFlux_i);
+
+	/*--- Compute ProjFlux_j ---*/
+	GetInviscidProjFlux(&Density_j, Velocity_j, &Pressure_j, &Enthalpy_j, Normal, ProjFlux_j);
+
+	/*--- Compute P and Lambda (do it with the Normal) ---*/
+
+	GetPMatrix(&RoeDensity, RoeVelocity, &RoeSoundSpeed, &RoeEnthalpy, &RoeChi, &RoeKappa, UnitNormal, P_Tensor);
+
+	ProjVelocity = 0.0; ProjVelocity_i = 0.0; ProjVelocity_j = 0.0;
+	for (iDim = 0; iDim < nDim; iDim++) {
+		ProjVelocity   += RoeVelocity[iDim]*UnitNormal[iDim];
+		ProjVelocity_i += Velocity_i[iDim]*UnitNormal[iDim];
+		ProjVelocity_j += Velocity_j[iDim]*UnitNormal[iDim];
+	}
+
+	/*--- Projected velocity adjustment due to mesh motion ---*/
+	if (grid_movement) {
+		double ProjGridVel = 0.0;
+		for (iDim = 0; iDim < nDim; iDim++) {
+			ProjGridVel   += 0.5*(GridVel_i[iDim]+GridVel_j[iDim])*UnitNormal[iDim];
+		}
+		ProjVelocity   -= ProjGridVel;
+		ProjVelocity_i -= ProjGridVel;
+		ProjVelocity_j -= ProjGridVel;
+	}
+
+	/*--- Flow eigenvalues and entropy correctors ---*/
+	for (iDim = 0; iDim < nDim; iDim++)
+		Lambda[iDim] = ProjVelocity;
+
+	Lambda[nVar-2] = ProjVelocity + RoeSoundSpeed;
+	Lambda[nVar-1] = ProjVelocity - RoeSoundSpeed;
+
+//	/*--- Harten and Hyman (1983) entropy correction ---*/
+//	for (iDim = 0; iDim < nDim; iDim++)
+//		Epsilon[iDim] = 4.0*max(0.0, max(Lambda[iDim]-ProjVelocity_i,ProjVelocity_j-Lambda[iDim]));
+//
+//	Epsilon[nVar-2] = 4.0*max(0.0, max(Lambda[nVar-2]-(ProjVelocity_i+SoundSpeed_i),(ProjVelocity_j+SoundSpeed_j)-Lambda[nVar-2]));
+//	Epsilon[nVar-1] = 4.0*max(0.0, max(Lambda[nVar-1]-(ProjVelocity_i-SoundSpeed_i),(ProjVelocity_j-SoundSpeed_j)-Lambda[nVar-1]));
+//
+//	for (iVar = 0; iVar < nVar; iVar++)
+//		if ( fabs(Lambda[iVar]) < Epsilon[iVar] )
+//			Lambda[iVar] = (Lambda[iVar]*Lambda[iVar] + Epsilon[iVar]*Epsilon[iVar])/(2.0*Epsilon[iVar]);
+//		else
+//			Lambda[iVar] = fabs(Lambda[iVar]);
+
+	for (iVar = 0; iVar < nVar; iVar++)
+		Lambda[iVar] = fabs(Lambda[iVar]);
+
+	if (!implicit) {
+
+		/*--- Compute wave amplitudes (characteristics) ---*/
+		proj_delta_vel = 0.0;
+		for (iDim = 0; iDim < nDim; iDim++) {
+			delta_vel[iDim] = Velocity_j[iDim] - Velocity_i[iDim];
+			proj_delta_vel += delta_vel[iDim]*Normal[iDim];
+		}
+		delta_p = Pressure_j - Pressure_i;
+		delta_rho = Density_j - Density_i;
+		proj_delta_vel = proj_delta_vel/Area;
+
+		if (nDim == 2) {
+			delta_wave[0] = delta_rho - delta_p/(RoeSoundSpeed*RoeSoundSpeed);
+			delta_wave[1] = UnitNormal[1]*delta_vel[0]-UnitNormal[0]*delta_vel[1];
+			delta_wave[2] = proj_delta_vel + delta_p/(RoeDensity*RoeSoundSpeed);
+			delta_wave[3] = -proj_delta_vel + delta_p/(RoeDensity*RoeSoundSpeed);
+		} else {
+			delta_wave[0] = delta_rho - delta_p/(RoeSoundSpeed*RoeSoundSpeed);
+			delta_wave[1] = UnitNormal[0]*delta_vel[2]-UnitNormal[2]*delta_vel[0];
+			delta_wave[2] = UnitNormal[1]*delta_vel[0]-UnitNormal[0]*delta_vel[1];
+			delta_wave[3] = proj_delta_vel + delta_p/(RoeDensity*RoeSoundSpeed);
+			delta_wave[4] = -proj_delta_vel + delta_p/(RoeDensity*RoeSoundSpeed);
+		}
+
+		/*--- Roe's Flux approximation ---*/
+		for (iVar = 0; iVar < nVar; iVar++) {
+			val_residual[iVar] = 0.5*(ProjFlux_i[iVar]+ProjFlux_j[iVar]);
+			for (jVar = 0; jVar < nVar; jVar++)
+				val_residual[iVar] -= 0.5*Lambda[jVar]*delta_wave[jVar]*P_Tensor[iVar][jVar]*Area;
+		}
+
+		/*--- Flux contribution due to grid motion ---*/
+		if (grid_movement) {
+			ProjVelocity = 0.0;
+			for (iDim = 0; iDim < nDim; iDim++)
+				ProjVelocity += 0.5*(GridVel_i[iDim]+GridVel_j[iDim])*Normal[iDim];
+			for (iVar = 0; iVar < nVar; iVar++) {
+				val_residual[iVar] -= ProjVelocity * 0.5*(U_i[iVar]+U_j[iVar]);
+			}
+		}
+	}
+	else {
+
+		/*--- Compute inverse P ---*/
+
+		GetPMatrix_inv(invP_Tensor, &RoeDensity, RoeVelocity, &RoeSoundSpeed,&RoeChi , &RoeKappa, UnitNormal);
+
+		/*--- Jacobians of the inviscid flux, scaled by
+     0.5 because val_resconv ~ 0.5*(fc_i+fc_j)*Normal ---*/
+		GetInviscidProjJac(Velocity_i, &Enthalpy_i, &Chi_i, &Kappa_i, Normal, 0.5, val_Jacobian_i);
+
+		GetInviscidProjJac(Velocity_j, &Enthalpy_j, &Chi_j, &Kappa_j, Normal, 0.5, val_Jacobian_j);
+
+
+		/*--- Diference variables iPoint and jPoint ---*/
+		for (iVar = 0; iVar < nVar; iVar++)
+			Diff_U[iVar] = U_j[iVar]-U_i[iVar];
+
+		/*--- Roe's Flux approximation ---*/
+		for (iVar = 0; iVar < nVar; iVar++) {
+			val_residual[iVar] = 0.5*(ProjFlux_i[iVar]+ProjFlux_j[iVar]);
+			for (jVar = 0; jVar < nVar; jVar++) {
+				Proj_ModJac_Tensor_ij = 0.0;
+				/*--- Compute |Proj_ModJac_Tensor| = P x |Lambda| x inverse P ---*/
+				for (kVar = 0; kVar < nVar; kVar++)
+					Proj_ModJac_Tensor_ij += P_Tensor[iVar][kVar]*Lambda[kVar]*invP_Tensor[kVar][jVar];
+				val_residual[iVar] -= 0.5*Proj_ModJac_Tensor_ij*Diff_U[jVar]*Area;
+				val_Jacobian_i[iVar][jVar] += 0.5*Proj_ModJac_Tensor_ij*Area;
+				val_Jacobian_j[iVar][jVar] -= 0.5*Proj_ModJac_Tensor_ij*Area;
+			}
+		}
+
+		/*--- Jacobian contributions due to grid motion ---*/
+		if (grid_movement) {
+			ProjVelocity = 0.0;
+			for (iDim = 0; iDim < nDim; iDim++)
+				ProjVelocity += 0.5*(GridVel_i[iDim]+GridVel_j[iDim])*Normal[iDim];
+			for (iVar = 0; iVar < nVar; iVar++) {
+				val_residual[iVar] -= ProjVelocity * 0.5*(U_i[iVar]+U_j[iVar]);
+				/*--- Implicit terms ---*/
+				val_Jacobian_i[iVar][iVar] -= 0.5*ProjVelocity;
+				val_Jacobian_j[iVar][iVar] -= 0.5*ProjVelocity;
+			}
+		}
+
+	}
+
+}
+
+
+void CUpwGeneralRoe_Flow::ComputeRoeAverage() {
+
+	double delta_rhoStaticEnergy, err_P, s, D;//, stateSeparationLimit;
+	// double tol = 10-6;
+	//
+	R = sqrt(fabs(Density_j/Density_i));
+	RoeDensity = R*Density_i;
+	sq_vel = 0;	for (iDim = 0; iDim < nDim; iDim++) {
+		RoeVelocity[iDim] = (R*Velocity_j[iDim]+Velocity_i[iDim])/(R+1);
+		sq_vel += RoeVelocity[iDim]*RoeVelocity[iDim];
+	}
+
+	RoeEnthalpy = (R*Enthalpy_j+Enthalpy_i)/(R+1);
+	delta_rho = Density_j - Density_i;
+	delta_p = Pressure_j - Pressure_i;
+	RoeKappa = 0.5*(Kappa_i + Kappa_j);
+	RoeChi = 0.5*(Chi_i + Chi_j);
+	// /* It works only using the hat values*/
+
+	s = RoeChi + RoeKappaStaticEnthalpy;
+	D = s*s*delta_rho*delta_rho + delta_p*delta_p;
+
+	// The below tolerance works well for both dimensional and dimensionless cases.
+	// Anyway to be checked upon different test cases.
+	double tol = 1.0e-03;
+
+	if (s > tol && D > tol) {
+
+		RoeKappaStaticEnthalpy = 0.5*(StaticEnthalpy_i*Kappa_i + StaticEnthalpy_j*Kappa_j);
+		delta_rhoStaticEnergy = Density_j*StaticEnergy_j - Density_i*StaticEnergy_i;
+
+		err_P = delta_p - RoeChi*delta_rho - RoeKappa*delta_rhoStaticEnergy;
+		s = RoeChi + RoeKappaStaticEnthalpy;
+		D = s*s*delta_rho*delta_rho + delta_p*delta_p;
+
+		RoeKappa = (D*RoeKappa)/(D - delta_p*err_P);
+		RoeChi = (D*RoeChi+ s*s*delta_rho*err_P)/(D - delta_p*err_P);
+
+	}
+
+	RoeSoundSpeed = sqrt(RoeChi + RoeKappa*(RoeEnthalpy-0.5*sq_vel));
+
+}
+
 CUpwMSW_Flow::CUpwMSW_Flow(unsigned short val_nDim, unsigned short val_nVar, CConfig *config) : CNumerics(val_nDim, val_nVar, config) {
   
   /*--- Set booleans from CConfig settings ---*/
@@ -1893,21 +2195,26 @@ void CUpwArtComp_Flow::ComputeResidual(double *val_residual, double **val_Jacobi
   }
   
   /*--- Mean variables at points iPoint and jPoint ---*/
+  
   MeanDensity = 0.5*(DensityInc_i + DensityInc_j);
   MeanPressure = 0.5*(Pressure_i + Pressure_j);
   MeanBetaInc2 = 0.5*(BetaInc2_i + BetaInc2_j);
   MeanSoundSpeed = sqrt(ProjVelocity*ProjVelocity + (MeanBetaInc2/MeanDensity) * Area * Area);
   
   /*--- Compute ProjFlux_i ---*/
+  
   GetInviscidArtCompProjFlux(&DensityInc_i, Velocity_i, &Pressure_i, &BetaInc2_i, Normal, ProjFlux_i);
   
   /*--- Compute ProjFlux_j ---*/
+  
   GetInviscidArtCompProjFlux(&DensityInc_j, Velocity_j, &Pressure_j, &BetaInc2_j, Normal, ProjFlux_j);
   
   /*--- Compute P and Lambda (matrix of eigenvalues) ---*/
+  
   GetPArtCompMatrix(&MeanDensity, MeanVelocity, &MeanBetaInc2, UnitNormal, P_Tensor);
   
   /*--- Flow eigenvalues ---*/
+  
   if (nDim == 2) {
     Lambda[0] = ProjVelocity;
     Lambda[1] = ProjVelocity + MeanSoundSpeed;
@@ -1921,24 +2228,29 @@ void CUpwArtComp_Flow::ComputeResidual(double *val_residual, double **val_Jacobi
   }
   
   /*--- Absolute value of the eigenvalues ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     Lambda[iVar] = fabs(Lambda[iVar]);
   
   /*--- Compute inverse P ---*/
-  GetPArtCompMatrix_inv(&MeanDensity, MeanVelocity, &MeanBetaInc2, UnitNormal, invP_Tensor);
   
+  GetPArtCompMatrix_inv(&MeanDensity, MeanVelocity, &MeanBetaInc2, UnitNormal, invP_Tensor);
+
+  /*--- Jacobian of the inviscid flux ---*/
+
   if (implicit) {
-    /*--- Jacobian of the inviscid flux ---*/
     GetInviscidArtCompProjJac(&DensityInc_i, Velocity_i, &BetaInc2_i, Normal, 0.5, val_Jacobian_i);
     GetInviscidArtCompProjJac(&DensityInc_j, Velocity_j, &BetaInc2_j, Normal, 0.5, val_Jacobian_j);
   }
   
   /*--- Diference variables iPoint and jPoint ---*/
+  
   Diff_U[0] = Pressure_j - Pressure_i;
   for (iDim = 0; iDim < nDim; iDim++)
     Diff_U[iDim+1] = Velocity_j[iDim]*DensityInc_i - Velocity_i[iDim]*DensityInc_j;
   
   /*--- Compute |Proj_ModJac_Tensor| = P x |Lambda| x inverse P ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++) {
     val_residual[iVar] = 0.5*(ProjFlux_i[iVar]+ProjFlux_j[iVar]);
     for (jVar = 0; jVar < nVar; jVar++) {
@@ -2480,22 +2792,17 @@ CAvgGradArtComp_Flow::CAvgGradArtComp_Flow(unsigned short val_nDim, unsigned sho
   implicit = (config->GetKind_TimeIntScheme_Flow() == EULER_IMPLICIT);
   
   /*--- Incompressible flow, primitive variables nDim+1, (P,vx,vy,vz) ---*/
-  PrimVar_i = new double [nVar];
-  PrimVar_j = new double [nVar];
-  Mean_PrimVar = new double [nVar];
+  
   Mean_GradPrimVar = new double* [nVar];
   
   /*--- Incompressible flow, gradient primitive variables nDim+1, (P,vx,vy,vz) ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     Mean_GradPrimVar[iVar] = new double [nDim];
   
 }
 
 CAvgGradArtComp_Flow::~CAvgGradArtComp_Flow(void) {
-  
-  delete [] PrimVar_i;
-  delete [] PrimVar_j;
-  delete [] Mean_PrimVar;
   
   for (iVar = 0; iVar < nVar; iVar++)
     delete [] Mean_GradPrimVar[iVar];
@@ -2507,6 +2814,7 @@ void CAvgGradArtComp_Flow::ComputeResidual(double *val_residual, double **val_Ja
                                            double **val_Jacobian_j, CConfig *config) {
   
   /*--- Normalized normal vector ---*/
+  
   Area = 0.0;
   for (iDim = 0; iDim < nDim; iDim++)
     Area += Normal[iDim]*Normal[iDim];
@@ -2515,34 +2823,33 @@ void CAvgGradArtComp_Flow::ComputeResidual(double *val_residual, double **val_Ja
   for (iDim = 0; iDim < nDim; iDim++)
     UnitNormal[iDim] = Normal[iDim]/Area;
   
-  /*--- Conversion to Primitive Variables ---*/
-  for (iVar = 0; iVar < nVar; iVar++) {
-    PrimVar_i[iVar] = V_i[iVar];
-    PrimVar_j[iVar] = V_j[iVar];
-    Mean_PrimVar[iVar] = 0.5*(PrimVar_i[iVar]+PrimVar_j[iVar]);
-  }
-  
   /*--- Laminar and Eddy viscosity ---*/
+  
   Laminar_Viscosity_i = V_i[nDim+3];  Laminar_Viscosity_j = V_j[nDim+3];
   Eddy_Viscosity_i = V_i[nDim+4];     Eddy_Viscosity_j = V_j[nDim+4];
   
   /*--- Mean Viscosities ---*/
+  
   Mean_Laminar_Viscosity = 0.5*(Laminar_Viscosity_i + Laminar_Viscosity_j);
   Mean_Eddy_Viscosity = 0.5*(Eddy_Viscosity_i + Eddy_Viscosity_j);
   
   /*--- Mean gradient approximation ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     for (iDim = 0; iDim < nDim; iDim++)
       Mean_GradPrimVar[iVar][iDim] = 0.5*(PrimVar_Grad_i[iVar][iDim] + PrimVar_Grad_j[iVar][iDim]);
   
   /*--- Get projected flux tensor ---*/
-  GetViscousArtCompProjFlux(Mean_PrimVar, Mean_GradPrimVar, Normal, Mean_Laminar_Viscosity, Mean_Eddy_Viscosity);
+  
+  GetViscousArtCompProjFlux(Mean_GradPrimVar, Normal, Mean_Laminar_Viscosity, Mean_Eddy_Viscosity);
   
   /*--- Update viscous residual ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     val_residual[iVar] = Proj_Flux_Tensor[iVar];
   
   /*--- Implicit part ---*/
+  
   if (implicit) {
     
     dist_ij = 0.0;
@@ -2603,6 +2910,7 @@ CAvgGradCorrected_Flow::~CAvgGradCorrected_Flow(void) {
 void CAvgGradCorrected_Flow::ComputeResidual(double *val_residual, double **val_Jacobian_i, double **val_Jacobian_j, CConfig *config) {
   
   /*--- Normalized normal vector ---*/
+  
   Area = 0.0;
   for (iDim = 0; iDim < nDim; iDim++)
     Area += Normal[iDim]*Normal[iDim];
@@ -2612,6 +2920,7 @@ void CAvgGradCorrected_Flow::ComputeResidual(double *val_residual, double **val_
     UnitNormal[iDim] = Normal[iDim]/Area;
   
   /*--- Compute vector going from iPoint to jPoint ---*/
+  
   dist_ij_2 = 0.0;
   for (iDim = 0; iDim < nDim; iDim++) {
     Edge_Vector[iDim] = Coord_j[iDim]-Coord_i[iDim];
@@ -2619,6 +2928,7 @@ void CAvgGradCorrected_Flow::ComputeResidual(double *val_residual, double **val_
   }
   
   /*--- Laminar and Eddy viscosity ---*/
+  
   Laminar_Viscosity_i = V_i[nDim+5];  Laminar_Viscosity_j = V_j[nDim+5];
   Eddy_Viscosity_i = V_i[nDim+6];     Eddy_Viscosity_j = V_j[nDim+6];
   
@@ -2629,11 +2939,13 @@ void CAvgGradCorrected_Flow::ComputeResidual(double *val_residual, double **val_
   }
   
   /*--- Mean Viscosities and turbulent kinetic energy ---*/
+  
   Mean_Laminar_Viscosity = 0.5*(Laminar_Viscosity_i + Laminar_Viscosity_j);
   Mean_Eddy_Viscosity    = 0.5*(Eddy_Viscosity_i + Eddy_Viscosity_j);
   Mean_turb_ke           = 0.5*(turb_ke_i + turb_ke_j);
   
   /*--- Projection of the mean gradient in the direction of the edge ---*/
+  
   for (iVar = 0; iVar < nDim+1; iVar++) {
     Proj_Mean_GradPrimVar_Edge[iVar] = 0.0;
     for (iDim = 0; iDim < nDim; iDim++) {
@@ -2649,13 +2961,16 @@ void CAvgGradCorrected_Flow::ComputeResidual(double *val_residual, double **val_
   }
   
   /*--- Get projected flux tensor ---*/
+  
   GetViscousProjFlux(Mean_PrimVar, Mean_GradPrimVar, Mean_turb_ke, Normal, Mean_Laminar_Viscosity, Mean_Eddy_Viscosity);
   
   /*--- Save residual value ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     val_residual[iVar] = Proj_Flux_Tensor[iVar];
   
   /*--- Compute the implicit part ---*/
+  
   if (implicit) {
     
     if (dist_ij_2 == 0.0) {
@@ -2681,7 +2996,6 @@ CAvgGradCorrectedArtComp_Flow::CAvgGradCorrectedArtComp_Flow(unsigned short val_
   
   PrimVar_i = new double [nVar];
   PrimVar_j = new double [nVar];
-  Mean_PrimVar = new double [nVar];
   Proj_Mean_GradPrimVar_Edge = new double [nVar];
   Edge_Vector = new double [nDim];
   
@@ -2695,11 +3009,10 @@ CAvgGradCorrectedArtComp_Flow::~CAvgGradCorrectedArtComp_Flow(void) {
   
   delete [] PrimVar_i;
   delete [] PrimVar_j;
-  delete [] Mean_PrimVar;
   delete [] Proj_Mean_GradPrimVar_Edge;
   delete [] Edge_Vector;
   
-  for (iVar = 0; iVar < nDim+1; iVar++)
+  for (iVar = 0; iVar < nVar; iVar++)
     delete [] Mean_GradPrimVar[iVar];
   delete [] Mean_GradPrimVar;
   
@@ -2708,6 +3021,7 @@ CAvgGradCorrectedArtComp_Flow::~CAvgGradCorrectedArtComp_Flow(void) {
 void CAvgGradCorrectedArtComp_Flow::ComputeResidual(double *val_residual, double **val_Jacobian_i, double **val_Jacobian_j, CConfig *config) {
   
   /*--- Normalized normal vector ---*/
+  
   Area = 0.0;
   for (iDim = 0; iDim < nDim; iDim++) Area += Normal[iDim]*Normal[iDim];
   Area = sqrt(Area);
@@ -2716,21 +3030,24 @@ void CAvgGradCorrectedArtComp_Flow::ComputeResidual(double *val_residual, double
     UnitNormal[iDim] = Normal[iDim]/Area;
   
   /*--- Conversion to Primitive Variables ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++) {
     PrimVar_i[iVar] = V_i[iVar];
     PrimVar_j[iVar] = V_j[iVar];
-    Mean_PrimVar[iVar] = 0.5*(PrimVar_i[iVar]+PrimVar_j[iVar]);
   }
   
   /*--- Laminar and Eddy viscosity ---*/
+  
   Laminar_Viscosity_i = V_i[nDim+3];  Laminar_Viscosity_j = V_j[nDim+3];
   Eddy_Viscosity_i = V_i[nDim+4];     Eddy_Viscosity_j = V_j[nDim+4];
   
   /*--- Mean Viscosities ---*/
+  
   Mean_Laminar_Viscosity = 0.5*(Laminar_Viscosity_i + Laminar_Viscosity_j);
   Mean_Eddy_Viscosity = 0.5*(Eddy_Viscosity_i + Eddy_Viscosity_j);
   
   /*--- Compute vector going from iPoint to jPoint ---*/
+  
   dist_ij_2 = 0;
   for (iDim = 0; iDim < nDim; iDim++) {
     Edge_Vector[iDim] = Coord_j[iDim]-Coord_i[iDim];
@@ -2738,6 +3055,7 @@ void CAvgGradCorrectedArtComp_Flow::ComputeResidual(double *val_residual, double
   }
   
   /*--- Projection of the mean gradient in the direction of the edge ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++) {
     Proj_Mean_GradPrimVar_Edge[iVar] = 0.0;
     for (iDim = 0; iDim < nDim; iDim++) {
@@ -2753,13 +3071,16 @@ void CAvgGradCorrectedArtComp_Flow::ComputeResidual(double *val_residual, double
   }
   
   /*--- Get projected flux tensor ---*/
-  GetViscousArtCompProjFlux(Mean_PrimVar, Mean_GradPrimVar, Normal, Mean_Laminar_Viscosity, Mean_Eddy_Viscosity);
+  
+  GetViscousArtCompProjFlux(Mean_GradPrimVar, Normal, Mean_Laminar_Viscosity, Mean_Eddy_Viscosity);
   
   /*--- Update viscous residual ---*/
+  
   for (iVar = 0; iVar < nVar; iVar++)
     val_residual[iVar] = Proj_Flux_Tensor[iVar];
   
   /*--- Implicit part ---*/
+  
   if (implicit) {
     
     if (dist_ij_2 == 0.0) {
@@ -2947,107 +3268,6 @@ void CSourceAxisymmetric_Flow::ComputeResidual(double *val_residual, double **Ja
   
 }
 
-CSource_JouleHeating::CSource_JouleHeating(unsigned short val_nDim, unsigned short val_nVar,
-                                           CConfig *config) : CNumerics(val_nDim, val_nVar, config) {
-  
-  implicit = (config->GetKind_TimeIntScheme_Flow() == EULER_IMPLICIT);
-  Velocity = new double [nDim];
-  Gamma = config->GetGamma();
-  Gas_Constant = config->GetGas_ConstantND();
-  
-}
-
-CSource_JouleHeating::~CSource_JouleHeating(void) {
-  
-}
-
-void CSource_JouleHeating::ComputeResidual(double *val_residual, double **val_Jacobian_i, CConfig *config) {
-  
-  double Current = 100.0;//config->GetCurrent();
-  for (unsigned short iVar = 0; iVar < nVar; iVar ++) {
-    val_residual[iVar] = 0.0;
-    for (unsigned short jVar = 0; jVar < nVar; jVar ++)
-      val_Jacobian_i[iVar][jVar] = 0.0;
-    
-  }
-  //		if (fabs(Integralsqr < 1E-16) || (Integralsqr != Integralsqr)) {
-  //			cout << " Integral = "<< Integralsqr << endl;
-  //			cin.get();
-  //		}
-  val_residual[nVar-1] = Current*Current*Elec_Conduct*Volume/(4.0*PI_NUMBER*PI_NUMBER*Integralsqr);
-  
-}
-
-void CSource_JouleHeating::SetElec_Cond() {
-  
-  Density = U_i[0];
-  sq_vel = 0.0;
-  for (iDim = 0; iDim < nDim; iDim++) {
-    Velocity[iDim] = U_i[iDim+1]/Density;
-    sq_vel += Velocity[iDim]*Velocity[iDim];
-  }
-  Energy = U_i[nDim+1]/Density;
-  SoundSpeed = sqrt(Gamma*Gamma_Minus_One*(Energy-0.5*sq_vel));
-  Pressure = (Gamma-1.0) * Density * (Energy - 0.5*sq_vel);
-  Temperature = Pressure/(Gas_Constant*Density);
-  double Patm = Pressure / 101325.0;
-  
-  double *coeff_a, *coeff_c, *coeff_d;
-  coeff_a = new double[8];
-  coeff_c = new double[8];
-  coeff_d = new double[8];
-  
-  double w, sigma, x0,x1,x2, x3,x4;
-  
-  x0 = 1.0; x1 = Patm; x2 = Patm*Patm ; x3 = pow(Patm,3); x4 = pow(Patm,4);
-  x1 = log(x1); x2 = log(x2); x3 = log(x3); x4 = log(x4);
-  
-  coeff_a[0] = exp(1.635045e0*x0 + 4.450390e-2*x1 - 5.928863e-4*x2  + 0.0*x3 + 0.0*x4);
-  coeff_c[0] = exp(5.748398e0*x0 + 6.411299e-2*x1 + 0.0*x2    	  + 0.0*x3 + 0.0*x4);
-  coeff_d[0] = exp(1.786355e0*x0 - 1.212690e-2*x1 - 2.375673e-4*x2  + 0.0*x3 + 0.0*x4);
-  w		   = exp(1.419925e0*x0 - 3.875497e-2*x1 + 0.0*x2	  	  + 0.0*x3 + 0.0*x4);
-  
-  sigma = coeff_a[0] - coeff_c[0]*exp(-pow(Temperature/coeff_d[0],w));
-  
-  coeff_c[1] = exp(8.930803e0*x0 + 5.718843e-2*x1 + 1.093759e-3*x2  + 0.0*x3 			+ 0.0*x4);
-  coeff_c[2] = exp(8.576847e0*x0 + 1.004174e-1*x1 + 7.406762e-3*x2  - 1.095186e-3*x3  + 0.0*x4);
-  coeff_c[3] = exp(1.023493e1*x0 + 6.651575e-2*x1 + 1.090308e-3*x2  - 6.576415e-5*x3 	+ 4.715318e-7*x4);
-  coeff_c[4] = exp(1.072380e1*x0 - 5.671452e-2*x1 + 1.468210e-4*x2  + 2.608196e-5*x3 	+ 6.511719e-6*x4);
-  coeff_c[5] = exp(1.106431e1*x0 + 5.578774e-2*x1 + 6.639655e-4*x2  - 0.0*x3 			+ 0.0*x4);
-  coeff_c[6] = exp(1.023203e1*x0 + 8.703300e-2*x1 + 5.007602e-3*x2  + 0.0*x3 			+ 0.0*x4);
-  coeff_c[7] = exp(2.946755e1*x0 - 4.289010e0*x1  - 3.224136e-1*x2  + 9.371814e-2*x3 	+ 0.0*x4);
-  
-  
-  coeff_d[1] = exp(7.014976e0*x0 +  7.625175e-2*x1 + 3.011941e-4*x2  + 0.0*x3 		 + 0.0*x4);
-  coeff_d[2] = exp(9.113182e0*x0 -  8.202725e-2*x1 + 6.299430e-3*x2  + 9.099828e-4*x3  + 0.0*x4);
-  coeff_d[3] = exp(8.039563e0*x0 +  1.435966e-1*x1 + 8.862611e-3*x2  - 3.478227e-4*x3  - 3.614711e-5*x4);
-  coeff_d[4] = exp(8.556977e0*x0 +  2.227207e-1*x1 - 2.773160e-3*x2  - 1.684219e-3*x3  + 1.878188e-4*x4);
-  coeff_d[5] = exp(9.309043e0*x0 +  1.366510e-1*x1 - 2.599317e-3*x2  + 0.0*x3 		 + 0.0*x4);
-  coeff_d[6] = exp(1.130562e1*x0 -  2.184155e-2*x1 - 1.865543e-4*x2  + 0.0*x3 		 + 0.0*x4);
-  coeff_d[7] = exp(2.430324e1*x0 -  2.653523e0*x1  - 3.309222e-1*x2  + 4.769061e-2*x3  + 0.0*x4);
-  
-  
-  coeff_a[1] =  exp(4.493934e-2*x0 -  9.063708e-3*x1 - 2.489500e-3*x2  + 0.0*x3 		   + 0.0*x4);
-  x0 = 1.0; 	  x1 = log(Patm); x2 = x1*x1 ; x3 = pow(x1,3); x4 = pow(x1,4);
-  
-  coeff_a[2] =  (1.593153e0*x0  +  4.137850e-2*x1 + 1.430491e-2*x2  - 4.403957e-7*x3  + 0.0*x4);
-  coeff_a[3] = -(2.627897e-1*x0 +  2.917558e-3*x1 + 3.036205e-3*x2  - 1.926651e-4*x3  - 2.917018e-5*x4);
-  coeff_a[4] = -(1.707216e-1*x0 +  2.035164e-2*x1 + 1.809127e-3*x2  - 9.630175e-5*x3  + 1.781249e-5*x4);
-  coeff_a[5] = -(2.480007e-1*x0 +  2.217818e-2*x1 + 9.094614e-4*x2  + 0.0*x3 		   + 0.0*x4);
-  coeff_a[6] =  (3.636707e0*x0  -  1.436268e-1*x1 - 2.934926e-3*x2  + 0.0*x3 		   + 0.0*x4);
-  coeff_a[7] =  coeff_a[3] + coeff_a[4] + coeff_a[5] - coeff_a[1] - coeff_a[2] - coeff_a[6];
-  
-  
-  double q = 0;
-  for (int i = 1; i < 8; ++i) {
-    q = (Temperature - coeff_c[i]) / coeff_d[i];
-    sigma = sigma + coeff_a[i] * q/(exp(q) + exp(-q));
-  }
-  
-  Elec_Conduct = exp(sigma);
-  
-}
-
 CSourceWindGust::CSourceWindGust(unsigned short val_nDim, unsigned short val_nVar, CConfig *config) : CNumerics(val_nDim, val_nVar, config) {
   
 }
@@ -3098,7 +3318,7 @@ void CSourceWindGust::ComputeResidual(double *val_residual, double **val_Jacobia
   } else {
     cout << "ERROR: You should only be in the gust source term in two dimensions" << endl;
 #ifndef HAVE_MPI
-    exit(1);
+    exit(EXIT_FAILURE);
 #else
 	MPI_Abort(MPI_COMM_WORLD,1);
 	MPI_Finalize();

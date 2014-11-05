@@ -2,7 +2,7 @@
  * \file config_structure.inl
  * \brief In-Line subroutines of the <i>config_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -56,17 +56,17 @@ inline long CConfig::GetUnst_RestartIter(void) { return Unst_RestartIter; }
 
 inline long CConfig::GetUnst_AdjointIter(void) { return Unst_AdjointIter; }
 
-inline unsigned short CConfig::GetMaxChildren(void) { return MaxChildren; }
-
 inline string CConfig::GetPlaneTag(unsigned short index) { return PlaneTag[index]; }
 
 inline double CConfig::GetEA_IntLimit(unsigned short index) { return EA_IntLimit[index]; }
+
+inline double CConfig::GetEA_ScaleFactor(void) { return EA_ScaleFactor; }
 
 inline double CConfig::GetAdjointLimit(void) { return AdjointLimit; }
 
 inline double *CConfig::GetHold_GridFixed_Coord(void) { return Hold_GridFixed_Coord; }
 
-inline double CConfig::GetMaxDimension(void) { return MaxDimension; }
+inline double *CConfig::GetSubsonic_Nacelle_Box(void) { return Subsonic_Nacelle_Box; }
 
 inline double CConfig::GetRatioDensity(void) { return RatioDensity; }
 
@@ -249,6 +249,8 @@ inline double CConfig::GetChargeCoeff(void) { return ChargeCoeff; }
 
 inline double CConfig::GetLimiterCoeff(void) { return LimiterCoeff; }
 
+inline unsigned long CConfig::GetLimiterIter(void) { return LimiterIter; }
+
 inline double CConfig::GetSharpEdgesCoeff(void) { return SharpEdgesCoeff; }
 
 inline double CConfig::GetReynolds(void) { return Reynolds; }
@@ -352,6 +354,8 @@ inline unsigned short CConfig::GetMGCycle(void) { return MGCycle; }
 inline unsigned short CConfig::GetGeometryMode(void) { return GeometryMode; }
 
 inline double CConfig::GetCFL(unsigned short val_mesh) {	return CFL[val_mesh]; }
+
+inline void CConfig::SetCFL(unsigned short val_mesh, double val_cfl) { CFL[val_mesh] = val_cfl; }
 
 inline double CConfig::GetUnst_CFL(void) {	return Unst_CFL; }
 
@@ -596,8 +600,6 @@ inline unsigned short CConfig::GetKind_TimeIntScheme(void) { return Kind_TimeNum
 
 inline unsigned short CConfig::GetKind_ConvNumScheme(void) { return Kind_ConvNumScheme; }
 
-inline unsigned short CConfig::GetKind_ViscNumScheme(void) { return Kind_ViscNumScheme; }
-
 inline unsigned short CConfig::GetKind_Centered(void) { return Kind_Centered; }
 
 inline unsigned short CConfig::GetKind_Upwind(void) { return Kind_Upwind; }
@@ -635,16 +637,6 @@ inline unsigned short CConfig::GetKind_ConvNumScheme_TNE2(void) { return Kind_Co
 inline unsigned short CConfig::GetKind_ConvNumScheme_AdjLevelSet(void) { return Kind_ConvNumScheme_AdjLevelSet; }
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_Template(void) { return Kind_ConvNumScheme_Template; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_Flow(void) { return Kind_ViscNumScheme_Flow; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_TNE2(void) { return Kind_ViscNumScheme_TNE2; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_AdjLevelSet(void) { return Kind_ViscNumScheme_AdjLevelSet; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_Template(void) { return Kind_ViscNumScheme_Template; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_Poisson(void) { return Kind_ViscNumScheme_Poisson; }
 
 inline unsigned short CConfig::GetKind_Centered_Flow(void) { return Kind_Centered_Flow; }
 
@@ -694,8 +686,6 @@ inline unsigned short CConfig::GetKind_TimeIntScheme_AdjFlow(void) { return Kind
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_AdjFlow(void) { return Kind_ConvNumScheme_AdjFlow; }
 
-inline unsigned short CConfig::GetKind_ViscNumScheme_AdjFlow(void) { return Kind_ViscNumScheme_AdjFlow; }
-
 inline double CConfig::GetKappa_1st_TNE2(void) { return Kappa_1st_TNE2; }
 
 inline double CConfig::GetKappa_2nd_TNE2(void) { return Kappa_2nd_TNE2; }
@@ -705,14 +695,6 @@ inline double CConfig::GetKappa_4th_TNE2(void) { return Kappa_4th_TNE2; }
 inline unsigned short CConfig::GetKind_TimeIntScheme_AdjTNE2(void) { return Kind_TimeIntScheme_AdjTNE2; }
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_AdjTNE2(void) { return Kind_ConvNumScheme_AdjTNE2; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_AdjTNE2(void) { return Kind_ViscNumScheme_AdjTNE2; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_Wave(void) { return Kind_ViscNumScheme_Wave; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_Heat(void) { return Kind_ViscNumScheme_Heat; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_FEA(void) { return Kind_ViscNumScheme_FEA; }
 
 inline unsigned short CConfig::GetKind_Centered_AdjFlow(void) { return Kind_Centered_AdjFlow; }
 
@@ -728,8 +710,6 @@ inline unsigned short CConfig::GetKind_TimeIntScheme_LinFlow(void) { return Kind
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_LinFlow(void) { return Kind_ConvNumScheme_LinFlow; }
 
-inline unsigned short CConfig::GetKind_ViscNumScheme_LinFlow(void) { return Kind_ViscNumScheme_LinFlow; }
-
 inline unsigned short CConfig::GetKind_Centered_LinFlow(void) { return Kind_Centered_LinFlow; }
 
 inline unsigned short CConfig::GetKind_Upwind_LinFlow(void) { return Kind_Upwind_LinFlow; }
@@ -744,8 +724,6 @@ inline unsigned short CConfig::GetKind_TimeIntScheme_AdjLevelSet(void) { return 
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_Turb(void) { return Kind_ConvNumScheme_Turb; }
 
-inline unsigned short CConfig::GetKind_ViscNumScheme_Turb(void) { return Kind_ViscNumScheme_Turb; }
-
 inline unsigned short CConfig::GetKind_Centered_Turb(void) { return Kind_Centered_Turb; }
 
 inline unsigned short CConfig::GetKind_Upwind_Turb(void) {	return Kind_Upwind_Turb; }
@@ -753,8 +731,6 @@ inline unsigned short CConfig::GetKind_Upwind_Turb(void) {	return Kind_Upwind_Tu
 inline unsigned short CConfig::GetKind_TimeIntScheme_AdjTurb(void) { return Kind_TimeIntScheme_AdjTurb; }
 
 inline unsigned short CConfig::GetKind_ConvNumScheme_AdjTurb(void) { return Kind_ConvNumScheme_AdjTurb; }
-
-inline unsigned short CConfig::GetKind_ViscNumScheme_AdjTurb(void) { return Kind_ViscNumScheme_AdjTurb; }
 
 inline unsigned short CConfig::GetKind_Centered_AdjTurb(void) { return Kind_Centered_AdjTurb; }
 
@@ -767,8 +743,6 @@ inline unsigned short CConfig::GetnSections(void) { return nSections; }
 inline unsigned short CConfig::GetnVolSections(void) { return nVolSections; }
 
 inline void CConfig::SetKind_TimeIntScheme(unsigned short val_kind_timeintscheme) { Kind_TimeNumScheme = val_kind_timeintscheme; }
-
-inline void CConfig::SetKind_ViscNumScheme(unsigned short val_kind_viscnumscheme) { Kind_ViscNumScheme = val_kind_viscnumscheme; }
 
 inline unsigned short CConfig::GetKind_ObjFunc(void) {return Kind_ObjFunc; }
 
@@ -930,6 +904,8 @@ inline string CConfig::GetSurfAdjCoeff_FileName(void) { return SurfAdjCoeff_File
 
 inline string CConfig::GetSurfLinCoeff_FileName(void) { return SurfLinCoeff_FileName; }
 
+inline unsigned short CConfig::GetResidual_Func_Flow(void) { return Residual_Func_Flow; }
+
 inline unsigned short CConfig::GetCauchy_Func_Flow(void) { return Cauchy_Func_Flow; }
 
 inline unsigned short CConfig::GetCauchy_Func_AdjFlow(void) { return Cauchy_Func_AdjFlow; }
@@ -977,8 +953,6 @@ inline double CConfig::GetDamp_Correc_Prolong(void) { return Damp_Correc_Prolong
 inline double CConfig::GetPosition_Plane(void) { return Position_Plane; }
 
 inline double CConfig::GetWeightCd(void) { return WeightCd; }
-
-inline double CConfig::GetCteViscDrag(void) { return CteViscDrag; }
 
 inline double CConfig::GetFixAzimuthalLine(void) { return FixAzimuthalLine; }
 
@@ -1057,6 +1031,10 @@ inline bool CConfig::GetWrt_Csv_Sol(void) { return Wrt_Csv_Sol; }
 inline bool CConfig::GetWrt_Restart(void) { return Wrt_Restart; }
 
 inline bool CConfig::GetWrt_Residuals(void) { return Wrt_Residuals; }
+
+inline bool CConfig::GetWrt_Limiters(void) { return Wrt_Limiters; }
+
+inline bool CConfig::GetWrt_SharpEdges(void) { return Wrt_SharpEdges; }
 
 inline bool CConfig::GetWrt_Halo(void) { return Wrt_Halo; }
 

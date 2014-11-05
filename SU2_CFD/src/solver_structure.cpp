@@ -2,7 +2,7 @@
  * \file solver_structure.cpp
  * \brief Main subrotuines for solving direct, adjoint and linearized problems.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -32,6 +32,7 @@ CSolver::CSolver(void) {
   Residual_i = NULL;
   Residual_j = NULL;
   Point_Max = NULL;
+  Point_Max_Coord = NULL;
   Solution = NULL;
   Solution_i = NULL;
   Solution_j = NULL;
@@ -72,6 +73,13 @@ CSolver::~CSolver(void) {
    if (Residual_i != NULL) delete [] Residual_i;
    if (Residual_j != NULL) delete [] Residual_j;
    if (Point_Max != NULL) delete [] Point_Max;
+   
+   if (Point_Max_Coord != NULL) {
+   for (iVar = 0; iVar < nVar; iVar++)
+   delete Point_Max_Coord[iVar];
+   delete [] Point_Max_Coord;
+   }
+   
    if (Solution != NULL) delete [] Solution;
    if (Solution_i != NULL) delete [] Solution_i;
    if (Solution_j != NULL) delete [] Solution_j;
@@ -158,18 +166,29 @@ void CSolver::SetResidual_RMS(CGeometry *geometry, CConfig *config) {
   
 #ifndef HAVE_MPI
   
-  for (iVar = 0; iVar < nVar; iVar++)
-    SetRes_RMS(iVar, max(EPS, sqrt(GetRes_RMS(iVar)/geometry->GetnPoint())));
+  for (iVar = 0; iVar < nVar; iVar++) {
+    
+    if (GetRes_RMS(iVar) != GetRes_RMS(iVar)) {
+      cout << "\n !!! Error: There is a NaN in the residual. Now exiting... !!! \n" << endl;
+      exit(EXIT_FAILURE);
+    }
+
+    SetRes_RMS(iVar, max(EPS*EPS, sqrt(GetRes_RMS(iVar)/geometry->GetnPoint())));
+    
+  }
   
 #else
   
-  int nProcessor, iProcessor;
+  int nProcessor, iProcessor, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &nProcessor);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   
-  double *sbuf_residual, *rbuf_residual;
+  double *sbuf_residual, *rbuf_residual, *sbuf_coord, *rbuf_coord, *Coord;
   unsigned long *sbuf_point, *rbuf_point, Local_nPointDomain, Global_nPointDomain;
+  unsigned short iDim;
   
   /*--- Set the L2 Norm residual in all the processors ---*/
+  
   sbuf_residual  = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) sbuf_residual[iVar] = 0.0;
   rbuf_residual  = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) rbuf_residual[iVar] = 0.0;
   
@@ -180,8 +199,22 @@ void CSolver::SetResidual_RMS(CGeometry *geometry, CConfig *config) {
   MPI_Allreduce(sbuf_residual, rbuf_residual, nVar, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&Local_nPointDomain, &Global_nPointDomain, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);
   
-  for (iVar = 0; iVar < nVar; iVar++)
-    SetRes_RMS(iVar, max(EPS, sqrt(rbuf_residual[iVar]/Global_nPointDomain)));
+  
+  for (iVar = 0; iVar < nVar; iVar++) {
+    
+    if (rbuf_residual[iVar] != rbuf_residual[iVar]) {
+      
+      if (rank == MASTER_NODE)
+        cout << "\n !!! Error: There is a NaN in the residual. Now exiting... !!! \n" << endl;
+      
+      MPI_Barrier(MPI_COMM_WORLD);
+      MPI_Abort(MPI_COMM_WORLD,1);
+      
+    }
+    
+    SetRes_RMS(iVar, max(EPS*EPS, sqrt(rbuf_residual[iVar]/Global_nPointDomain)));
+    
+  }
   
   delete [] sbuf_residual;
   delete [] rbuf_residual;
@@ -189,21 +222,27 @@ void CSolver::SetResidual_RMS(CGeometry *geometry, CConfig *config) {
   /*--- Set the Maximum residual in all the processors ---*/
   sbuf_residual = new double [nVar]; for (iVar = 0; iVar < nVar; iVar++) sbuf_residual[iVar] = 0.0;
   sbuf_point = new unsigned long [nVar]; for (iVar = 0; iVar < nVar; iVar++) sbuf_point[iVar] = 0;
+  sbuf_coord = new double[nVar*nDim]; for (iVar = 0; iVar < nVar*nDim; iVar++) sbuf_coord[iVar] = 0.0;
   
   rbuf_residual = new double [nProcessor*nVar]; for (iVar = 0; iVar < nProcessor*nVar; iVar++) rbuf_residual[iVar] = 0.0;
   rbuf_point = new unsigned long [nProcessor*nVar]; for (iVar = 0; iVar < nProcessor*nVar; iVar++) rbuf_point[iVar] = 0;
-  
+  rbuf_coord = new double[nProcessor*nVar*nDim]; for (iVar = 0; iVar < nProcessor*nVar*nDim; iVar++) rbuf_coord[iVar] = 0.0;
+
   for (iVar = 0; iVar < nVar; iVar++) {
     sbuf_residual[iVar] = GetRes_Max(iVar);
     sbuf_point[iVar] = GetPoint_Max(iVar);
+    Coord = GetPoint_Max_Coord(iVar);
+    for (iDim = 0; iDim < nDim; iDim++)
+      sbuf_coord[iVar*nDim+iDim] = Coord[iDim];
   }
   
   MPI_Allgather(sbuf_residual, nVar, MPI_DOUBLE, rbuf_residual, nVar, MPI_DOUBLE, MPI_COMM_WORLD);
   MPI_Allgather(sbuf_point, nVar, MPI_UNSIGNED_LONG, rbuf_point, nVar, MPI_UNSIGNED_LONG, MPI_COMM_WORLD);
-  
+  MPI_Allgather(sbuf_coord, nVar*nDim, MPI_DOUBLE, rbuf_coord, nVar*nDim, MPI_DOUBLE, MPI_COMM_WORLD);
+
   for (iVar = 0; iVar < nVar; iVar++) {
     for (iProcessor = 0; iProcessor < nProcessor; iProcessor++) {
-      AddRes_Max(iVar, rbuf_residual[iProcessor*nVar+iVar], rbuf_point[iProcessor*nVar+iVar]);
+      AddRes_Max(iVar, rbuf_residual[iProcessor*nVar+iVar], rbuf_point[iProcessor*nVar+iVar], &rbuf_coord[iProcessor*nVar*nDim+iVar*nDim]);
     }
   }
   
@@ -212,6 +251,9 @@ void CSolver::SetResidual_RMS(CGeometry *geometry, CConfig *config) {
   
   delete [] sbuf_point;
   delete [] rbuf_point;
+  
+  delete [] sbuf_coord;
+  delete [] rbuf_coord;
   
 #endif
   
@@ -894,6 +936,7 @@ void CSolver::SetSolution_Limiter(CGeometry *geometry, CConfig *config) {
   dave, LimK, eps1, eps2, dm, dp, du, ds, limiter, SharpEdge_Distance;
   
   /*--- Initialize solution max and solution min in the entire domain --*/
+  
   for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
     for (iVar = 0; iVar < nVar; iVar++) {
       node[iPoint]->SetSolution_Max(iVar, -EPS);
@@ -902,17 +945,21 @@ void CSolver::SetSolution_Limiter(CGeometry *geometry, CConfig *config) {
   }
   
   /*--- Establish bounds for Spekreijse monotonicity by finding max & min values of neighbor variables --*/
+  
   for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
     
     /*--- Point identification, Normal vector and area ---*/
+    
     iPoint = geometry->edge[iEdge]->GetNode(0);
     jPoint = geometry->edge[iEdge]->GetNode(1);
     
     /*--- Get the conserved variables ---*/
+    
     Solution_i = node[iPoint]->GetSolution();
     Solution_j = node[jPoint]->GetSolution();
     
     /*--- Compute the maximum, and minimum values for nodes i & j ---*/
+    
     for (iVar = 0; iVar < nVar; iVar++) {
       du = (Solution_j[iVar] - Solution_i[iVar]);
       node[iPoint]->SetSolution_Min(iVar, min(node[iPoint]->GetSolution_Min(iVar), du));
@@ -920,177 +967,138 @@ void CSolver::SetSolution_Limiter(CGeometry *geometry, CConfig *config) {
       node[jPoint]->SetSolution_Min(iVar, min(node[jPoint]->GetSolution_Min(iVar), -du));
       node[jPoint]->SetSolution_Max(iVar, max(node[jPoint]->GetSolution_Max(iVar), -du));
     }
+    
   }
   
   /*--- Initialize the limiter --*/
+  
   for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
     for (iVar = 0; iVar < nVar; iVar++) {
       node[iPoint]->SetLimiter(iVar, 2.0);
     }
   }
   
-  switch (config->GetKind_SlopeLimit()) {
+  /*--- Venkatakrishnan limiter ---*/
+  
+  if (config->GetKind_SlopeLimit() == VENKATAKRISHNAN) {
+    
+    /*-- Get limiter parameters from the configuration file ---*/
+    
+    dave = config->GetRefElemLength();
+    LimK = config->GetLimiterCoeff();
+    eps1 = LimK*dave;
+    eps2 = eps1*eps1*eps1;
+    
+    for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
       
-      /*--- Minmod (Roe 1984) limiter ---*/
-    case MINMOD:
+      iPoint     = geometry->edge[iEdge]->GetNode(0);
+      jPoint     = geometry->edge[iEdge]->GetNode(1);
+      Gradient_i = node[iPoint]->GetGradient();
+      Gradient_j = node[jPoint]->GetGradient();
+      Coord_i    = geometry->node[iPoint]->GetCoord();
+      Coord_j    = geometry->node[jPoint]->GetCoord();
       
-      for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
+      for (iVar = 0; iVar < nVar; iVar++) {
         
-        iPoint     = geometry->edge[iEdge]->GetNode(0);
-        jPoint     = geometry->edge[iEdge]->GetNode(1);
-        Gradient_i = node[iPoint]->GetGradient();
-        Gradient_j = node[jPoint]->GetGradient();
-        Coord_i    = geometry->node[iPoint]->GetCoord();
-        Coord_j    = geometry->node[jPoint]->GetCoord();
+        /*--- Calculate the interface left gradient, delta- (dm) ---*/
         
-        for (iVar = 0; iVar < nVar; iVar++) {
-          
-          /*--- Calculate the interface left gradient, delta- (dm) ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_j[iDim]-Coord_i[iDim])*Gradient_i[iVar][iDim];
-          
-          /*--- Calculate the interface right gradient, delta+ (dp) ---*/
-          if ( dm > 0.0 ) dp = node[iPoint]->GetSolution_Max(iVar);
-          else dp = node[iPoint]->GetSolution_Min(iVar);
-          
-          limiter = max(0.0, min(1.0,dp/dm));
-          
-          if (limiter < node[iPoint]->GetLimiter(iVar))
-            if (geometry->node[iPoint]->GetDomain()) node[iPoint]->SetLimiter(iVar, limiter);
-          
-          /*-- Repeat for point j on the edge ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_i[iDim]-Coord_j[iDim])*Gradient_j[iVar][iDim];
-          
-          if ( dm > 0.0 ) dp = node[jPoint]->GetSolution_Max(iVar);
-          else dp = node[jPoint]->GetSolution_Min(iVar);
-          
-          limiter = max(0.0, min(1.0,dp/dm));
-          
-          if (limiter < node[jPoint]->GetLimiter(iVar))
-            if (geometry->node[jPoint]->GetDomain()) node[jPoint]->SetLimiter(iVar, limiter);
-        }
+        dm = 0.0;
+        for (iDim = 0; iDim < nDim; iDim++)
+          dm += 0.5*(Coord_j[iDim]-Coord_i[iDim])*Gradient_i[iVar][iDim];
+        
+        /*--- Calculate the interface right gradient, delta+ (dp) ---*/
+        
+        if ( dm > 0.0 ) dp = node[iPoint]->GetSolution_Max(iVar);
+        else dp = node[iPoint]->GetSolution_Min(iVar);
+        
+        limiter = ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
+        
+        if (limiter < node[iPoint]->GetLimiter(iVar))
+          node[iPoint]->SetLimiter(iVar, limiter);
+        
+        /*-- Repeat for point j on the edge ---*/
+        
+        dm = 0.0;
+        for (iDim = 0; iDim < nDim; iDim++)
+          dm += 0.5*(Coord_i[iDim]-Coord_j[iDim])*Gradient_j[iVar][iDim];
+        
+        if ( dm > 0.0 ) dp = node[jPoint]->GetSolution_Max(iVar);
+        else dp = node[jPoint]->GetSolution_Min(iVar);
+        
+        limiter = ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
+        
+        if (limiter < node[jPoint]->GetLimiter(iVar))
+          node[jPoint]->SetLimiter(iVar, limiter);
       }
-      break;
+    }
+  }
+  
+  /*--- Sharp edges limiter ---*/
+  
+  if (config->GetKind_SlopeLimit() == SHARP_EDGES) {
+    
+    /*-- Get limiter parameters from the configuration file ---*/
+    dave = config->GetRefElemLength();
+    LimK = config->GetLimiterCoeff();
+    eps1 = LimK*dave;
+    eps2 = pow(eps1, 3.0);
+    
+    for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
       
-      /*--- Venkatakrishnan (Venkatakrishnan 1994) limiter ---*/
-    case VENKATAKRISHNAN:
+      iPoint     = geometry->edge[iEdge]->GetNode(0);
+      jPoint     = geometry->edge[iEdge]->GetNode(1);
+      Solution_i = node[iPoint]->GetSolution();
+      Solution_j = node[jPoint]->GetSolution();
+      Gradient_i = node[iPoint]->GetGradient();
+      Gradient_j = node[jPoint]->GetGradient();
+      Coord_i    = geometry->node[iPoint]->GetCoord();
+      Coord_j    = geometry->node[jPoint]->GetCoord();
       
-      /*-- Get limiter parameters from the configuration file ---*/
-      dave = config->GetRefElemLength();
-      LimK = config->GetLimiterCoeff();
-      eps2 = pow((LimK*dave), 3.0);
-      
-      for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
+      for (iVar = 0; iVar < nVar; iVar++) {
         
-        iPoint     = geometry->edge[iEdge]->GetNode(0);
-        jPoint     = geometry->edge[iEdge]->GetNode(1);
-        Gradient_i = node[iPoint]->GetGradient();
-        Gradient_j = node[jPoint]->GetGradient();
-        Coord_i    = geometry->node[iPoint]->GetCoord();
-        Coord_j    = geometry->node[jPoint]->GetCoord();
+        /*--- Calculate the interface left gradient, delta- (dm) ---*/
+        dm = 0.0;
+        for (iDim = 0; iDim < nDim; iDim++)
+          dm += 0.5*(Coord_j[iDim]-Coord_i[iDim])*Gradient_i[iVar][iDim];
         
-        for (iVar = 0; iVar < nVar; iVar++) {
-          
-          /*--- Calculate the interface left gradient, delta- (dm) ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_j[iDim]-Coord_i[iDim])*Gradient_i[iVar][iDim];
-          
-          /*--- Calculate the interface right gradient, delta+ (dp) ---*/
-          if ( dm > 0.0 ) dp = node[iPoint]->GetSolution_Max(iVar);
-          else dp = node[iPoint]->GetSolution_Min(iVar);
-          
-          limiter = ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
-          
-          if (limiter < node[iPoint]->GetLimiter(iVar))
-            if (geometry->node[iPoint]->GetDomain()) node[iPoint]->SetLimiter(iVar, limiter);
-          
-          /*-- Repeat for point j on the edge ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_i[iDim]-Coord_j[iDim])*Gradient_j[iVar][iDim];
-          
-          if ( dm > 0.0 ) dp = node[jPoint]->GetSolution_Max(iVar);
-          else dp = node[jPoint]->GetSolution_Min(iVar);
-          
-          limiter = ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
-          
-          if (limiter < node[jPoint]->GetLimiter(iVar))
-            if (geometry->node[jPoint]->GetDomain()) node[jPoint]->SetLimiter(iVar, limiter);
-        }
+        /*--- Calculate the interface right gradient, delta+ (dp) ---*/
+        if ( dm > 0.0 ) dp = node[iPoint]->GetSolution_Max(iVar);
+        else dp = node[iPoint]->GetSolution_Min(iVar);
+        
+        /*--- Compute the distance to a sharp edge ---*/
+        SharpEdge_Distance = (geometry->node[iPoint]->GetSharpEdge_Distance() - config->GetSharpEdgesCoeff()*eps1);
+        ds = 0.0;
+        if (SharpEdge_Distance < -eps1) ds = 0.0;
+        if (fabs(SharpEdge_Distance) <= eps1) ds = 0.5*(1.0+(SharpEdge_Distance/eps1)+(1.0/PI_NUMBER)*sin(PI_NUMBER*SharpEdge_Distance/eps1));
+        if (SharpEdge_Distance > eps1) ds = 1.0;
+        
+        limiter = ds * ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
+        
+        if (limiter < node[iPoint]->GetLimiter(iVar))
+          if (geometry->node[iPoint]->GetDomain()) node[iPoint]->SetLimiter(iVar, limiter);
+        
+        /*-- Repeat for point j on the edge ---*/
+        dm = 0.0;
+        for (iDim = 0; iDim < nDim; iDim++)
+          dm += 0.5*(Coord_i[iDim]-Coord_j[iDim])*Gradient_j[iVar][iDim];
+        
+        if ( dm > 0.0 ) dp = node[jPoint]->GetSolution_Max(iVar);
+        else dp = node[jPoint]->GetSolution_Min(iVar);
+        
+        /*--- Compute the distance to a sharp edge ---*/
+        SharpEdge_Distance = (geometry->node[jPoint]->GetSharpEdge_Distance() - config->GetSharpEdgesCoeff()*eps1);
+        ds = 0.0;
+        if (SharpEdge_Distance < -eps1) ds = 0.0;
+        if (fabs(SharpEdge_Distance) <= eps1) ds = 0.5*(1.0+(SharpEdge_Distance/eps1)+(1.0/PI_NUMBER)*sin(PI_NUMBER*SharpEdge_Distance/eps1));
+        if (SharpEdge_Distance > eps1) ds = 1.0;
+        
+        limiter = ds * ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
+        
+        if (limiter < node[jPoint]->GetLimiter(iVar))
+          if (geometry->node[jPoint]->GetDomain()) node[jPoint]->SetLimiter(iVar, limiter);
+        
       }
-      break;
-      
-      /*--- Sharp edges limiter ---*/
-    case SHARP_EDGES:
-      
-      /*-- Get limiter parameters from the configuration file ---*/
-      dave = config->GetRefElemLength();
-      LimK = config->GetLimiterCoeff();
-      eps1 = LimK*dave;
-      eps2 = pow(eps1, 3.0);
-      
-      for (iEdge = 0; iEdge < geometry->GetnEdge(); iEdge++) {
-        
-        iPoint     = geometry->edge[iEdge]->GetNode(0);
-        jPoint     = geometry->edge[iEdge]->GetNode(1);
-        Solution_i = node[iPoint]->GetSolution();
-        Solution_j = node[jPoint]->GetSolution();
-        Gradient_i = node[iPoint]->GetGradient();
-        Gradient_j = node[jPoint]->GetGradient();
-        Coord_i    = geometry->node[iPoint]->GetCoord();
-        Coord_j    = geometry->node[jPoint]->GetCoord();
-        
-        for (iVar = 0; iVar < nVar; iVar++) {
-          
-          /*--- Calculate the interface left gradient, delta- (dm) ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_j[iDim]-Coord_i[iDim])*Gradient_i[iVar][iDim];
-          
-          /*--- Calculate the interface right gradient, delta+ (dp) ---*/
-          if ( dm > 0.0 ) dp = node[iPoint]->GetSolution_Max(iVar);
-          else dp = node[iPoint]->GetSolution_Min(iVar);
-          
-          /*--- Compute the distance to a sharp edge ---*/
-          SharpEdge_Distance = (geometry->node[iPoint]->GetSharpEdge_Distance() - config->GetSharpEdgesCoeff()*eps1);
-          ds = 0.0;
-          if (SharpEdge_Distance < -eps1) ds = 0.0;
-          if (fabs(SharpEdge_Distance) <= eps1) ds = 0.5*(1.0+(SharpEdge_Distance/eps1)+(1.0/PI_NUMBER)*sin(PI_NUMBER*SharpEdge_Distance/eps1));
-          if (SharpEdge_Distance > eps1) ds = 1.0;
-          
-          limiter = ds * ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
-          
-          if (limiter < node[iPoint]->GetLimiter(iVar))
-            if (geometry->node[iPoint]->GetDomain()) node[iPoint]->SetLimiter(iVar, limiter);
-          
-          /*-- Repeat for point j on the edge ---*/
-          dm = 0.0;
-          for (iDim = 0; iDim < nDim; iDim++)
-            dm += 0.5*(Coord_i[iDim]-Coord_j[iDim])*Gradient_j[iVar][iDim];
-          
-          if ( dm > 0.0 ) dp = node[jPoint]->GetSolution_Max(iVar);
-          else dp = node[jPoint]->GetSolution_Min(iVar);
-          
-          /*--- Compute the distance to a sharp edge ---*/
-          SharpEdge_Distance = (geometry->node[jPoint]->GetSharpEdge_Distance() - config->GetSharpEdgesCoeff()*eps1);
-          ds = 0.0;
-          if (SharpEdge_Distance < -eps1) ds = 0.0;
-          if (fabs(SharpEdge_Distance) <= eps1) ds = 0.5*(1.0+(SharpEdge_Distance/eps1)+(1.0/PI_NUMBER)*sin(PI_NUMBER*SharpEdge_Distance/eps1));
-          if (SharpEdge_Distance > eps1) ds = 1.0;
-          
-          limiter = ds * ( dp*dp + 2.0*dp*dm + eps2 )/( dp*dp + dp*dm + 2.0*dm*dm + eps2);
-          
-          if (limiter < node[jPoint]->GetLimiter(iVar))
-            if (geometry->node[jPoint]->GetDomain()) node[jPoint]->SetLimiter(iVar, limiter);
-          
-        }
-      }
-      break;
-      
+    }
   }
   
   /*--- Limiter MPI ---*/
@@ -1181,32 +1189,38 @@ void CSolver::SetPressureLaplacian(CGeometry *geometry, double *PressureLaplacia
   
 }
 
-void CSolver::Gauss_Elimination(double** A, double* rhs, unsigned long nVar) {
-  unsigned long jVar, kVar, iVar;
+void CSolver::Gauss_Elimination(double** A, double* rhs, unsigned short nVar) {
+  
+  short iVar, jVar, kVar;
   double weight, aux;
   
   if (nVar == 1)
-    rhs[0] /= (A[0][0]+EPS*EPS);
+    rhs[0] /= A[0][0];
   else {
+    
     /*--- Transform system in Upper Matrix ---*/
-    for (iVar = 1; iVar < nVar; iVar++) {
+    
+    for (iVar = 1; iVar < (short)nVar; iVar++) {
       for (jVar = 0; jVar < iVar; jVar++) {
-        weight = A[iVar][jVar]/(A[jVar][jVar]+EPS*EPS);
-        for (kVar = jVar; kVar < nVar; kVar++)
+        weight = A[iVar][jVar]/A[jVar][jVar];
+        for (kVar = jVar; kVar < (short)nVar; kVar++)
           A[iVar][kVar] -= weight*A[jVar][kVar];
         rhs[iVar] -= weight*rhs[jVar];
       }
     }
+    
     /*--- Backwards substitution ---*/
-    rhs[nVar-1] = rhs[nVar-1]/(A[nVar-1][nVar-1]+EPS*EPS);
-    for (short iVar = nVar-2; iVar >= 0; iVar--) {
+    
+    rhs[nVar-1] = rhs[nVar-1]/A[nVar-1][nVar-1];
+    for (iVar = (short)nVar-2; iVar >= 0; iVar--) {
       aux = 0;
-      for (jVar = iVar+1; jVar < nVar; jVar++)
+      for (jVar = iVar+1; jVar < (short)nVar; jVar++)
         aux += A[iVar][jVar]*rhs[jVar];
-      rhs[iVar] = (rhs[iVar]-aux)/(A[iVar][iVar]+EPS*EPS);
+      rhs[iVar] = (rhs[iVar]-aux)/A[iVar][iVar];
       if (iVar == 0) break;
     }
   }
+  
 }
 
 void CSolver::Aeroelastic(CSurfaceMovement *surface_movement, CGeometry *geometry, CConfig *config, unsigned long ExtIter) {
@@ -1374,7 +1388,7 @@ void CSolver::SolveTypicalSectionWingModel(CGeometry *geometry, double Cl, doubl
       printf("\n\n   !!! Error !!!\n");
       printf("Grid movement kind Aeroelastic is only available in 2 dimensions.");
       printf("Now exiting...\n\n");
-      exit(0);
+      exit(EXIT_FAILURE);
     }
   }
   
@@ -1545,7 +1559,7 @@ CBaselineSolver::CBaselineSolver(CGeometry *geometry, CConfig *config, unsigned 
   /*--- In case there is no restart file ---*/
   if (restart_file.fail()) {
     cout << "SU2 flow file " << filename << " not found" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   
   /*--- Output the file name to the console. ---*/
@@ -1791,8 +1805,9 @@ void CBaselineSolver::LoadRestart(CGeometry **geometry, CSolver ***solver, CConf
   
   /*--- In case there is no file ---*/
   if (solution_file.fail()) {
-    cout << "There is no SU2 restart file!!" << endl;
-    exit(1);
+    if (rank == MASTER_NODE)
+      cout << "There is no SU2 restart file!!" << endl;
+    exit(EXIT_FAILURE);
   }
   
   /*--- Output the file name to the console. ---*/

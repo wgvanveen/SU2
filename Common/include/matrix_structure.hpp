@@ -3,7 +3,7 @@
  * \brief Headers of the main subroutines for creating the sparse matrices-by-blocks.
  *        The subroutines and functions are in the <i>matrix_structure.cpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -32,7 +32,7 @@
 
 #include "config_structure.hpp"
 #include "geometry_structure.hpp"
-#include "linear_solvers_structure.hpp"
+#include "vector_structure.hpp"
 
 using namespace std;
 
@@ -41,7 +41,7 @@ using namespace std;
  * \brief Main class for defining sparse matrices-by-blocks
  with compressed row format.
  * \author A. Bueno, F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CSysMatrix {
 private:
@@ -370,7 +370,7 @@ public:
 	 * \param[in] vec - CSysVector to be multiplied by the preconditioner.
 	 * \param[out] prod - Result of the product A*vec.
 	 */
-	void ComputeILUPreconditioner(const CSysVector & vec, CSysVector & prod);
+	void ComputeILUPreconditioner(const CSysVector & vec, CSysVector & prod, CGeometry *geometry, CConfig *config);
 
   /*!
 	 * \brief Multiply CSysVector by the preconditioner
@@ -385,7 +385,7 @@ public:
 	 * \param[out] prod - Result of the product A*vec.
 	 */
 	void ComputeLineletPreconditioner(const CSysVector & vec, CSysVector & prod, CGeometry *geometry, CConfig *config);
-	
+
   /*!
 	 * \brief Compute the residual Ax-b
 	 * \param[in] sol - CSysVector to be multiplied by the preconditioner.

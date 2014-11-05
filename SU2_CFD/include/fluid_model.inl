@@ -2,7 +2,7 @@
  * \file fluid_model.inl
  * \brief In-Line subroutines of the <i>solver_structure.hpp</i> file.
  * \author S.Vitale, M.Pini, G.Gori, A.Guardone, P.Colonna
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -60,5 +60,5 @@ inline void CFluidModel::SetTDState_rhoe (double rho, double e ) { }
 inline void CFluidModel::SetTDState_PT (double P, double T ) { }
 inline void CFluidModel::SetTDState_Prho (double P, double rho ) { }
 inline void CFluidModel::SetTDState_hs (double h, double s ) { }
-//inline void CFluidModel::SetTDState_Ps (double P, double s ) { }
+inline void CFluidModel::SetTDState_rhoT (double rho, double T ) { }
 inline void CFluidModel::SetEnergy_Prho (double P, double rho ) { }

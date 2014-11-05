@@ -2,7 +2,7 @@
  * \file option_structure.hpp
  * \brief Defines classes for referencing options for easy input in CConfig
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * Many of the classes in this file are templated, and therefore must
  * be declared and defined here; to keep all elements together, there
@@ -100,6 +100,7 @@ enum SU2_COMPONENT {
   SU2_SOL = 7	/*!< \brief Running the SU2_SOL software. */
 };
 
+const unsigned int BUFSIZE = 3000000;		/*!< \brief MPI buffer. */
 const unsigned int MAX_PARAMETERS = 10;		/*!< \brief Maximum number of parameters for a design variable definition. */
 const unsigned int MAX_NUMBER_MARKER = 5000;	/*!< \brief Maximum number of markers. */
 const unsigned int MAX_NUMBER_PERIODIC = 10;	/*!< \brief Maximum number of periodic boundary conditions. */
@@ -511,28 +512,13 @@ static const map<string, ENUM_SPATIAL_ORDER> SpatialOrder_Map = CCreateMap<strin
  */
 enum ENUM_LIMITER {
   VENKATAKRISHNAN = 0,	/*!< \brief Slope limiter using Venkatakrisnan method. */
-  MINMOD = 1,           /*!< \brief Slope limiter using minmod method. */
+  BARTH_JESPERSEN = 1,  /*!< \brief Slope limiter using Barth-Jespersen method. */
   SHARP_EDGES = 2       /*!< \brief Slope limiter using sharp edges. */
 };
 static const map<string, ENUM_LIMITER> Limiter_Map = CCreateMap<string, ENUM_LIMITER>
 ("VENKATAKRISHNAN", VENKATAKRISHNAN)
-("MINMOD", MINMOD)
+("BARTH_JESPERSEN", BARTH_JESPERSEN)
 ("SHARP_EDGES", SHARP_EDGES);
-
-/*!
- * \brief types of viscous term discretizations
- */
-enum ENUM_VISCOUS {
-  NO_VISCOUS = 0,               /*!< \brief No viscous term computation. */
-  AVG_GRAD = 1,			/*!< \brief Average of gradients method for viscous term computation. */
-  AVG_GRAD_CORRECTED = 2,	/*!< \brief Average of gradients with correction for viscous term computation. */
-  GALERKIN = 3			/*!< \brief Galerkin method for viscous term computation. */
-};
-static const map<string, ENUM_VISCOUS> Viscous_Map = CCreateMap<string, ENUM_VISCOUS>
-("NONE", NO_VISCOUS)
-("AVG_GRAD", AVG_GRAD)
-("AVG_GRAD_CORRECTED", AVG_GRAD_CORRECTED)
-("GALERKIN", GALERKIN);
 
 /*!
  * \brief types of methods used to calculate source term Jacobians
@@ -660,12 +646,17 @@ enum BC_TYPE {
 enum RIEMANN_TYPE {
   TOTAL_CONDITIONS_PT = 1,		/*!< \brief User specifies total pressure, total temperature, and flow direction. */
   DENSITY_VELOCITY = 2,         /*!< \brief User specifies density and velocity, and flow direction. */
-  STATIC_PRESSURE = 3           /*!< \brief User specifies static pressure. */
+  STATIC_PRESSURE = 3,           /*!< \brief User specifies static pressure. */
+  TOTAL_SUPERSONIC_INFLOW = 4,	/*!< \brief User specifies total pressure, total temperature and Velocity components. */
+  STATIC_SUPERSONIC_INFLOW = 5 /*!< \brief User specifies static pressure, static temperature, and Mach components. */
 };
+
 static const map<string, RIEMANN_TYPE> Riemann_Map = CCreateMap<string, RIEMANN_TYPE>
 ("TOTAL_CONDITIONS_PT", TOTAL_CONDITIONS_PT)
 ("DENSITY_VELOCITY", DENSITY_VELOCITY)
-("STATIC_PRESSURE", STATIC_PRESSURE);
+("STATIC_PRESSURE", STATIC_PRESSURE)
+("TOTAL_SUPERSONIC_INFLOW", TOTAL_SUPERSONIC_INFLOW)
+("STATIC_SUPERSONIC_INFLOW", STATIC_SUPERSONIC_INFLOW);
 
 /*!
  * \brief types inlet boundary treatments
@@ -756,6 +747,19 @@ static const map<string, ENUM_OBJECTIVE> Objective_Map = CCreateMap<string, ENUM
 ("MAX_THICK_SEC5", MAX_THICK_SEC5)
 ("AVG_TOTAL_PRESSURE", AVG_TOTAL_PRESSURE)
 ("MASS_FLOW_RATE", MASS_FLOW_RATE);
+
+/*!
+ * \brief types of residual criteria equations
+ */
+
+enum ENUM_RESIDUAL {
+	RHO_RESIDUAL = 1, 	      /*!< \brief Rho equation residual criteria equation. */
+	RHO_ENERGY_RESIDUAL = 2 	      /*!< \brief RhoE equation residual criteria equation. */
+};
+
+static const map<string, ENUM_RESIDUAL> Residual_Map = CCreateMap<string, ENUM_RESIDUAL>
+("RHO", RHO_RESIDUAL)
+("RHO_ENERGY", RHO_ENERGY_RESIDUAL);
 
 /*!
  * \brief types of Continuous equations
@@ -970,7 +974,11 @@ enum ENUM_LINEAR_SOLVER {
   CONJUGATE_GRADIENT = 4,	/*!< \brief Preconditionated conjugate gradient method for grid deformation. */
   FGMRES = 5,    	/*!< \brief Flexible Generalized Minimal Residual method. */
   BCGSTAB = 6,	/*!< \brief BCGSTAB - Biconjugate Gradient Stabilized Method (main solver). */
-  RFGMRES = 7
+  RFGMRES = 7,  /*!< \brief Flexible Generalized Minimal Residual method with restart. */
+  SMOOTHER_LUSGS = 8,  /*!< \brief LU_SGS smoother. */
+  SMOOTHER_JACOBI = 9,  /*!< \brief Jacobi smoother. */
+  SMOOTHER_ILU = 10,  /*!< \brief ILU smoother. */
+  SMOOTHER_LINELET = 11  /*!< \brief Linelet smoother. */
 };
 static const map<string, ENUM_LINEAR_SOLVER> Linear_Solver_Map = CCreateMap<string, ENUM_LINEAR_SOLVER>
 ("STEEPEST_DESCENT", STEEPEST_DESCENT)
@@ -979,7 +987,11 @@ static const map<string, ENUM_LINEAR_SOLVER> Linear_Solver_Map = CCreateMap<stri
 ("CONJUGATE_GRADIENT", CONJUGATE_GRADIENT)
 ("BCGSTAB", BCGSTAB)
 ("FGMRES", FGMRES)
-("RFGMRES", RFGMRES);
+("RFGMRES", RFGMRES)
+("SMOOTHER_LUSGS", SMOOTHER_LUSGS)
+("SMOOTHER_JACOBI", SMOOTHER_JACOBI)
+("SMOOTHER_LINELET", SMOOTHER_LINELET)
+("SMOOTHER_ILU0", SMOOTHER_ILU);
 
 /*!
  * \brief types of sensitivity smoothing

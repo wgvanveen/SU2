@@ -2,7 +2,7 @@
  * \file output_tecplot.cpp
  * \brief Main subroutines for output solver information.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -155,6 +155,11 @@ void COutput::SetTecplot_ASCII(CConfig *config, CGeometry *geometry, CSolver **s
     for (iVar = 0; iVar < nVar_Consv; iVar++) {
       Tecplot_File << ",\"Conservative_" << iVar+1 << "\"";
     }
+    if (config->GetWrt_Limiters()) {
+      for (iVar = 0; iVar < nVar_Consv; iVar++) {
+        Tecplot_File << ",\"Limiter_" << iVar+1 << "\"";
+      }
+    }
     if (config->GetWrt_Residuals()) {
       for (iVar = 0; iVar < nVar_Consv; iVar++) {
         Tecplot_File << ",\"Residual_" << iVar+1 << "\"";
@@ -175,19 +180,21 @@ void COutput::SetTecplot_ASCII(CConfig *config, CGeometry *geometry, CSolver **s
     }
     
     if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      Tecplot_File << ",\"Pressure\",\"Pressure_Coefficient\",\"Mach\"";
+      Tecplot_File << ",\"Pressure\",\"Temperature\",\"Pressure_Coefficient\",\"Mach\"";
     }
     
     if ((Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      Tecplot_File << ", \"Temperature\", \"Laminar_Viscosity\", \"Skin_Friction_Coefficient\", \"Heat_Flux\", \"Y_Plus\"";
+      Tecplot_File << ",\"Laminar_Viscosity\", \"Skin_Friction_Coefficient\", \"Heat_Flux\", \"Y_Plus\"";
     }
     
     if (Kind_Solver == RANS) {
       Tecplot_File << ", \"Eddy_Viscosity\"";
     }
     
-    if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      Tecplot_File << ", \"Sharp_Edge_Dist\"";
+    if (config->GetWrt_SharpEdges()) {
+      if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
+        Tecplot_File << ", \"Sharp_Edge_Dist\"";
+      }
     }
     
     if ((Kind_Solver == TNE2_EULER) || (Kind_Solver == TNE2_NAVIER_STOKES)) {
@@ -1800,6 +1807,11 @@ string AssembleVariableNames(CGeometry *geometry, CConfig *config, unsigned shor
     for (iVar = 0; iVar < nVar_Consv; iVar++) {
       variables << "Conservative_" << iVar+1<<" "; *NVar += 1;
     }
+    if (config->GetWrt_Limiters()) {
+      for (iVar = 0; iVar < nVar_Consv; iVar++) {
+        variables << "Limiter_" << iVar+1<<" "; *NVar += 1;
+      }
+    }
     if (config->GetWrt_Residuals()) {
       for (iVar = 0; iVar < nVar_Consv; iVar++) {
         variables << "Residual_" << iVar+1<<" "; *NVar += 1;
@@ -1821,13 +1833,13 @@ string AssembleVariableNames(CGeometry *geometry, CConfig *config, unsigned shor
     }
     
     if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      variables << "Pressure Pressure_Coefficient Mach ";
-      *NVar += 3;
+      variables << "Pressure Temperature Pressure_Coefficient Mach ";
+      *NVar += 4;
     }
     
     if ((Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      variables << "Temperature Laminar_Viscosity Skin_Friction_Coefficient Heat_Flux Y_Plus ";
-      *NVar += 5;
+      variables << "Laminar_Viscosity Skin_Friction_Coefficient Heat_Flux Y_Plus ";
+      *NVar += 4;
     }
     
     if (Kind_Solver == RANS) {
@@ -1835,9 +1847,11 @@ string AssembleVariableNames(CGeometry *geometry, CConfig *config, unsigned shor
       *NVar += 1;
     }
     
-    if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      variables << "Sharp_Edge_Dist ";
-      *NVar += 1;
+    if (config->GetWrt_SharpEdges()) {
+      if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
+        variables << "Sharp_Edge_Dist ";
+        *NVar += 1;
+      }
     }
     
     if ((Kind_Solver == TNE2_EULER) || (Kind_Solver == TNE2_NAVIER_STOKES)) {

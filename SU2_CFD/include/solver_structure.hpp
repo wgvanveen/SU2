@@ -5,7 +5,7 @@
  *        <i>solution_direct.cpp</i>, <i>solution_adjoint.cpp</i>, and
  *        <i>solution_linearized.cpp</i> files.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -55,7 +55,7 @@ using namespace std;
  * \brief Main class for defining the PDE solution, it requires
  * a child class for each particular solver (Euler, Navier-Stokes, etc.)
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CSolver {
 protected:
@@ -76,6 +76,7 @@ protected:
 	*Residual_i,					/*!< \brief Auxiliary nVar vector for storing the residual at point i. */
 	*Residual_j;					/*!< \brief Auxiliary nVar vector for storing the residual at point j. */
   unsigned long *Point_Max; /*!< \brief Vector with the maximal residual for each variable. */
+  double **Point_Max_Coord; /*!< \brief Vector with pointers to the coords of the maximal residual for each variable. */
 	double *Solution,		/*!< \brief Auxiliary nVar vector. */
 	*Solution_i,				/*!< \brief Auxiliary nVar vector for storing the solution at point i. */
 	*Solution_j;				/*!< \brief Auxiliary nVar vector for storing the solution at point j. */
@@ -294,8 +295,10 @@ public:
 	 * \brief Adds the maximal residual, this is useful for the convergence history.
 	 * \param[in] val_var - Index of the variable.
 	 * \param[in] val_residual - Value of the residual to store in the position <i>val_var</i>.
+   * \param[in] val_point - Value of the point index for the max residual.
+   * \param[in] val_coord - Location (x,y,z) of the max residual point.
 	 */
-	void AddRes_Max(unsigned short val_var, double val_residual, unsigned long val_point);
+	void AddRes_Max(unsigned short val_var, double val_residual, unsigned long val_point, double* val_coord);
     
 	/*!
 	 * \brief Get the maximal residual, this is useful for the convergence history.
@@ -310,7 +313,14 @@ public:
 	 * \return Value of the biggest residual for the variable in the position <i>val_var</i>.
 	 */
 	unsigned long GetPoint_Max(unsigned short val_var);
-    
+  
+  /*!
+   * \brief Get the location of the maximal residual, this is useful for the convergence history.
+   * \param[in] val_var - Index of the variable.
+   * \return Pointer to the location (x,y,z) of the biggest residual for the variable <i>val_var</i>.
+   */
+  double* GetPoint_Max_Coord(unsigned short val_var);
+  
 	/*!
 	 * \brief Set Value of the residual if there is a grid movement.
 	 * \param[in] geometry - Geometrical definition of the problem.
@@ -971,17 +981,6 @@ public:
     
 	/*!
 	 * \brief A virtual member.
-	 * \param[in] geometry - Geometrical definition of the problem.
-	 * \param[in] solver_container - Container vector with all the solutions.
-	 * \param[in] solver - Description of the numerical method.
-	 * \param[in] config - Definition of the particular problem.
-	 * \param[in] iMesh - Index of the mesh in multigrid computations.
-	 */
-	virtual void Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
-                                 CConfig *config, unsigned short iMesh);
-    
-	/*!
-	 * \brief A virtual member.
 	 * \param[in] StiffMatrix_Elem - Stiffness matrix of an element
 	 */
 	virtual void AddStiffMatrix(double **StiffMatrix_Elem, unsigned long Point_0, unsigned long Point_1, unsigned long Point_2, unsigned long Point_3 );
@@ -1143,6 +1142,34 @@ public:
 	 * \return Value of the drag coefficient on the surface <i>val_marker</i>.
 	 */
 	virtual double GetSurface_CDrag(unsigned short val_marker);
+  
+  /*!
+   * \brief A virtual member.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the side force coefficient on the surface <i>val_marker</i>.
+   */
+  virtual double GetSurface_CSideForce(unsigned short val_marker);
+  
+  /*!
+   * \brief A virtual member.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the x force coefficient on the surface <i>val_marker</i>.
+   */
+  virtual double GetSurface_CFx(unsigned short val_marker);
+  
+  /*!
+   * \brief A virtual member.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the y force coefficient on the surface <i>val_marker</i>.
+   */
+  virtual double GetSurface_CFy(unsigned short val_marker);
+  
+  /*!
+   * \brief A virtual member.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the z force coefficient on the surface <i>val_marker</i>.
+   */
+  virtual double GetSurface_CFz(unsigned short val_marker);
     
     /*!
 	 * \brief A virtual member.
@@ -1858,7 +1885,7 @@ public:
 	 * \param[in] rhs - Right hand side.
 	 * \param[in] nVar - Number of variables.
 	 */
-	void Gauss_Elimination(double** A, double* rhs, unsigned long nVar);
+	void Gauss_Elimination(double** A, double* rhs, unsigned short nVar);
     
   /*!
   * \brief Get the number of Species present in the flow.
@@ -1918,7 +1945,7 @@ public:
  * \class CBaselineSolver
  * \brief Main class for defining a baseline solution from a restart file (for output).
  * \author F. Palacios, T. Economon.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CBaselineSolver : public CSolver {
 public:
@@ -1963,7 +1990,7 @@ public:
  * \brief Main class for defining the Euler's flow solver.
  * \ingroup Euler_Equations
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CEulerSolver : public CSolver {
 protected:
@@ -1987,6 +2014,10 @@ protected:
 	*CFz_Inv,			/*!< \brief z Force coefficient (inviscid contribution) for each boundary. */
   *Surface_CLift_Inv, /*!< \brief Lift coefficient (inviscid contribution) for each monitoring surface. */
   *Surface_CDrag_Inv, /*!< \brief Drag coefficient (inviscid contribution) for each monitoring surface. */
+  *Surface_CSideForce_Inv, /*!< \brief Side-force coefficient (inviscid contribution) for each monitoring surface. */
+  *Surface_CFx_Inv,   /*!< \brief x Force coefficient (inviscid contribution) for each monitoring surface. */
+  *Surface_CFy_Inv,   /*!< \brief y Force coefficient (inviscid contribution) for each monitoring surface. */
+  *Surface_CFz_Inv,   /*!< \brief z Force coefficient (inviscid contribution) for each monitoring surface. */
   *Surface_CMx_Inv,   /*!< \brief x Moment coefficient (inviscid contribution) for each monitoring surface. */
   *Surface_CMy_Inv,   /*!< \brief y Moment coefficient (inviscid contribution) for each monitoring surface. */
   *Surface_CMz_Inv,   /*!< \brief z Moment coefficient (inviscid contribution) for each monitoring surface. */
@@ -2064,6 +2095,10 @@ protected:
 	Total_HeatFluxDiff;			/*!< \brief Total Equivalent Area coefficient for all the boundaries. */
   double *Surface_CLift,   /*!< \brief Lift coefficient for each monitoring surface. */
   *Surface_CDrag,          /*!< \brief Drag coefficient for each monitoring surface. */
+  *Surface_CSideForce,     /*!< \brief Side-force coefficient for each monitoring surface. */
+  *Surface_CFx,            /*!< \brief x Force coefficient for each monitoring surface. */
+  *Surface_CFy,            /*!< \brief y Force coefficient for each monitoring surface. */
+  *Surface_CFz,            /*!< \brief z Force coefficient for each monitoring surface. */
   *Surface_CMx,            /*!< \brief x Moment coefficient for each monitoring surface. */
   *Surface_CMy,            /*!< \brief y Moment coefficient for each monitoring surface. */
   *Surface_CMz;            /*!< \brief z Moment coefficient for each monitoring surface. */
@@ -2634,6 +2669,34 @@ public:
 	 * \return Value of the drag coefficient on the surface <i>val_marker</i>.
 	 */
 	double GetSurface_CDrag(unsigned short val_marker);
+  
+  /*!
+   * \brief Provide the non dimensional side-force coefficient.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the side-force coefficient on the surface <i>val_marker</i>.
+   */
+  double GetSurface_CSideForce(unsigned short val_marker);
+  
+  /*!
+   * \brief Provide the non dimensional x force coefficient.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the x force coefficient on the surface <i>val_marker</i>.
+   */
+  double GetSurface_CFx(unsigned short val_marker);
+  
+  /*!
+   * \brief Provide the non dimensional y force coefficient.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the y force coefficient on the surface <i>val_marker</i>.
+   */
+  double GetSurface_CFy(unsigned short val_marker);
+  
+  /*!
+   * \brief Provide the non dimensional z force coefficient.
+   * \param[in] val_marker - Surface marker where the coefficient is computed.
+   * \return Value of the z force coefficient on the surface <i>val_marker</i>.
+   */
+  double GetSurface_CFz(unsigned short val_marker);
     
     /*!
 	 * \brief Provide the non dimensional x moment coefficient.
@@ -3082,7 +3145,7 @@ public:
  * \brief Main class for defining the Navier-Stokes flow solver.
  * \ingroup Navier_Stokes_Equations
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CNSSolver : public CEulerSolver {
 private:
@@ -3101,6 +3164,10 @@ private:
 	*CFz_Visc,			/*!< \brief Force z coefficient (viscous contribution) for each boundary. */
   *Surface_CLift_Visc,/*!< \brief Lift coefficient (viscous contribution) for each monitoring surface. */
   *Surface_CDrag_Visc,/*!< \brief Drag coefficient (viscous contribution) for each monitoring surface. */
+  *Surface_CSideForce_Visc,/*!< \brief Side-force coefficient (viscous contribution) for each monitoring surface. */
+  *Surface_CFx_Visc,  /*!< \brief Force x coefficient (viscous contribution) for each monitoring surface. */
+  *Surface_CFy_Visc,  /*!< \brief Force y coefficient (viscous contribution) for each monitoring surface. */
+  *Surface_CFz_Visc,  /*!< \brief Force z coefficient (viscous contribution) for each monitoring surface. */
   *Surface_CMx_Visc,  /*!< \brief Moment x coefficient (viscous contribution) for each monitoring surface. */
   *Surface_CMy_Visc,  /*!< \brief Moment y coefficient (viscous contribution) for each monitoring surface. */
   *Surface_CMz_Visc,  /*!< \brief Moment z coefficient (viscous contribution) for each monitoring surface. */
@@ -3313,7 +3380,7 @@ public:
  * \brief Main class for defining the turbulence model solver.
  * \ingroup Turbulence_Model
  * \author A. Bueno.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CTurbSolver : public CSolver {
 protected:
@@ -3441,7 +3508,7 @@ public:
  * \brief Main class for defining the turbulence model solver.
  * \ingroup Turbulence_Model
  * \author A. Bueno.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 
 class CTurbSASolver: public CTurbSolver {
@@ -3625,7 +3692,7 @@ public:
  * \brief Main class for defining the turbulence model solver.
  * \ingroup Turbulence_Model
  * \author B. Tracey.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 
 class CTurbMLSolver: public CTurbSolver {
@@ -3767,7 +3834,7 @@ public:
  * \brief Main class for defining the turbulence model solver.
  * \ingroup Turbulence_Model
  * \author A. Aranake.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 
 class CTransLMSolver: public CTurbSolver {
@@ -3973,7 +4040,7 @@ public:
  * \brief Main class for defining the turbulence model solver.
  * \ingroup Turbulence_Model
  * \author A. Campos, F. Palacios, T. Economon
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 
 class CTurbSSTSolver: public CTurbSolver {
@@ -4111,7 +4178,7 @@ public:
  * \brief Main class for defining the Euler's adjoint flow solver.
  * \ingroup Euler_Equations
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CAdjEulerSolver : public CSolver {
 protected:
@@ -4136,7 +4203,9 @@ protected:
 	unsigned long nMarker;				/*!< \brief Total number of markers using the grid information. */
 	double Gamma;									/*!< \brief Fluid's Gamma constant (ratio of specific heats). */
 	double Gamma_Minus_One;				/*!< \brief Fluids's Gamma - 1.0  . */
-  
+  double *FlowPrimVar_i,	/*!< \brief Store the flow solution at point i. */
+	*FlowPrimVar_j;        /*!< \brief Store the flow solution at point j. */
+
   double pnorm;
     
 public:
@@ -4536,7 +4605,7 @@ public:
  * \brief Main class for defining the Navier-Stokes' adjoint flow solver.
  * \ingroup Navier_Stokes_Equations
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CAdjNSSolver : public CAdjEulerSolver {
 public:
@@ -4629,7 +4698,7 @@ public:
  * \brief Main class for defining the adjoint turbulence model solver.
  * \ingroup Turbulence_Model
  * \author F. Palacios, A. Bueno.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CAdjTurbSolver : public CSolver {
 private:
@@ -4772,7 +4841,7 @@ public:
  * \brief Main class for defining the linearized Euler solver.
  * \ingroup Euler_Equations
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CLinEulerSolver : public CSolver {
 private:
@@ -4895,7 +4964,7 @@ public:
 /*! \class CPoissonSolver
  *  \brief Main class for defining the poisson potential solver.
  *  \author F. Palacios.
- *  \version 3.2.0 "eagle"
+ *  \version 3.2.3 "eagle"
  *  \date May 3, 2010.
  */
 class CPoissonSolver : public CSolver {
@@ -4948,8 +5017,8 @@ public:
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] iMesh - Index of the mesh in multigrid computations.
 	 */
-	void Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
-                         unsigned short iMesh);
+	void Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
+                         unsigned short iMesh, unsigned short iRKStep);
     
 	/*!
 	 * \brief Integrate the Poisson equation using a Galerkin method.
@@ -5032,7 +5101,7 @@ public:
 /*! \class CWaveSolver
  *  \brief Main class for defining the wave solver.
  *  \author F. Palacios.
- *  \version 3.2.0 "eagle"
+ *  \version 3.2.3 "eagle"
  *  \date May 3, 2010.
  */
 class CWaveSolver : public CSolver {
@@ -5074,8 +5143,8 @@ public:
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] iMesh - Index of the mesh in multigrid computations.
 	 */
-	void Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
-                         unsigned short iMesh);
+	void Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
+                         unsigned short iMesh, unsigned short iRKStep);
     
 	/*!
 	 * \brief Impose via the residual the Euler wall boundary condition.
@@ -5187,7 +5256,7 @@ public:
 /*! \class CHeatSolver
  *  \brief Main class for defining the heat solver.
  *  \author F. Palacios.
- *  \version 3.2.0 "eagle"
+ *  \version 3.2.3 "eagle"
  *  \date May 3, 2010.
  */
 class CHeatSolver : public CSolver {
@@ -5229,8 +5298,8 @@ public:
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] iMesh - Index of the mesh in multigrid computations.
 	 */
-	void Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
-                         unsigned short iMesh);
+	void Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
+                         unsigned short iMesh, unsigned short iRKStep);
   
   /*!
 	 * \brief Impose via the residual or brute force the Navier-Stokes adjoint boundary condition (heat flux).
@@ -5305,19 +5374,19 @@ public:
 /*! \class CFEASolver
  *  \brief Main class for defining the FEA solver.
  *  \author F. Palacios.
- *  \version 3.2.0 "eagle"
+ *  \version 3.2.3 "eagle"
  *  \date May 3, 2010.
  */
 class CFEASolver : public CSolver {
 private:
+  
 	double  Total_CFEA;			/*!< \brief Total FEA coefficient for all the boundaries. */
-    
-    CSysMatrix StiffMatrixSpace; /*!< \brief Sparse structure for storing the stiffness matrix in Galerkin computations. */
+  CSysMatrix StiffMatrixSpace; /*!< \brief Sparse structure for storing the stiffness matrix in Galerkin computations. */
 	CSysMatrix StiffMatrixTime;	/*!< \brief Sparse structure for storing the stiffness matrix in Galerkin computations. */
-    
-    double **StiffMatrix_Elem,			/*!< \brief Auxiliary matrices for storing point to point Stiffness Matrices. */
+  
+  double **StiffMatrix_Elem,			/*!< \brief Auxiliary matrices for storing point to point Stiffness Matrices. */
 	**StiffMatrix_Node;							/*!< \brief Auxiliary matrices for storing point to point Stiffness Matrices. */
-    
+  
 public:
     
 	/*!
@@ -5345,8 +5414,8 @@ public:
 	 * \param[in] config - Definition of the particular problem.
 	 * \param[in] iMesh - Index of the mesh in multigrid computations.
 	 */
-	void Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
-                         unsigned short iMesh);
+	void Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config,
+                         unsigned short iMesh, unsigned short iRKStep);
     
 	/*!
 	 * \brief Impose a displacement (constraint) boundary condition.
@@ -5485,7 +5554,7 @@ public:
  * \brief Main class for defining the level set solver.
  * \ingroup LevelSet_Model
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CAdjLevelSetSolver : public CSolver {
 protected:
@@ -5664,7 +5733,7 @@ public:
  * \brief Main class for defining the template model solver.
  * \ingroup Template_Flow_Equation
  * \author F. Palacios.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  */
 class CTemplateSolver : public CSolver {
 private:

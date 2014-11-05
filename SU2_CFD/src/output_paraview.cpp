@@ -2,7 +2,7 @@
  * \file output_paraview.cpp
  * \brief Main subroutines for output solver information.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -379,6 +379,27 @@ void COutput::SetParaview_ASCII(CConfig *config, CGeometry *geometry, unsigned s
       VarCounter++;
     }
     
+    if (config->GetWrt_Limiters()) {
+      for (iVar = 0; iVar < nVar_Consv; iVar++) {
+        
+        Paraview_File << "\nSCALARS Limiter_" << iVar+1 << " float 1\n";
+        Paraview_File << "LOOKUP_TABLE default\n";
+        
+        for (iPoint = 0; iPoint < nGlobal_Poin; iPoint++) {
+          if (surf_sol) {
+            if (LocalIndex[iPoint+1] != 0) {
+              /*--- Loop over the vars/residuals and write the values to file ---*/
+              Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
+            }
+          } else {
+            /*--- Loop over the vars/residuals and write the values to file ---*/
+            Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
+          }
+        }
+        VarCounter++;
+      }
+    }
+    
     if (config->GetWrt_Residuals()) {
       for (iVar = 0; iVar < nVar_Consv; iVar++) {
         
@@ -494,6 +515,22 @@ void COutput::SetParaview_ASCII(CConfig *config, CGeometry *geometry, unsigned s
       }
       VarCounter++;
       
+      Paraview_File << "\nSCALARS Temperature float 1\n";
+      Paraview_File << "LOOKUP_TABLE default\n";
+
+      for (iPoint = 0; iPoint < nGlobal_Poin; iPoint++) {
+    	  if (surf_sol) {
+    		  if (LocalIndex[iPoint+1] != 0) {
+    			  /*--- Loop over the vars/residuals and write the values to file ---*/
+    			  Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
+    		  }
+    	  } else {
+    		  /*--- Loop over the vars/residuals and write the values to file ---*/
+    		  Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
+    	  }
+      }
+      VarCounter++;
+
       Paraview_File << "\nSCALARS Pressure_Coefficient float 1\n";
       Paraview_File << "LOOKUP_TABLE default\n";
       
@@ -529,23 +566,7 @@ void COutput::SetParaview_ASCII(CConfig *config, CGeometry *geometry, unsigned s
     }
     
     if ((Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      
-      Paraview_File << "\nSCALARS Temperature float 1\n";
-      Paraview_File << "LOOKUP_TABLE default\n";
-      
-      for (iPoint = 0; iPoint < nGlobal_Poin; iPoint++) {
-        if (surf_sol) {
-          if (LocalIndex[iPoint+1] != 0) {
-            /*--- Loop over the vars/residuals and write the values to file ---*/
-            Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
-          }
-        } else {
-          /*--- Loop over the vars/residuals and write the values to file ---*/
-          Paraview_File << scientific << Data[VarCounter][iPoint] << "\t";
-        }
-      }
-      VarCounter++;
-      
+
       Paraview_File << "\nSCALARS Laminar_Viscosity float 1\n";
       Paraview_File << "LOOKUP_TABLE default\n";
       

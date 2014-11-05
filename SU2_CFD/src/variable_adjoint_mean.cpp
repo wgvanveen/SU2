@@ -2,7 +2,7 @@
  * \file variable_adjoint_mean.cpp
  * \brief Definition of the solution fields.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -249,6 +249,7 @@ bool CAdjEulerVariable::SetPrimVar_Compressible(double SharpEdge_Distance, bool 
   if (check_dens) {
     
     /*--- Copy the old solution ---*/
+    
     for (iVar = 0; iVar < nVar; iVar++)
       Solution[iVar] = Solution_Old[iVar];
     
@@ -271,8 +272,9 @@ bool CAdjEulerVariable::SetPrimVar_Incompressible(double SharpEdge_Distance, boo
   /*--- Check that the adjoint solution is bounded ---*/
   
   if (check_press) {
-    
+
     /*--- Copy the old solution ---*/
+    
     for (iVar = 0; iVar < nVar; iVar++)
       Solution[iVar] = Solution_Old[iVar];
     

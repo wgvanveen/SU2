@@ -2,7 +2,7 @@
  * fluid_model_pig.cpp
  * \brief Source of the ideal gas model.
  * \author: S.Vitale, G.Gori, M.Pini, A.Guardone, P.Colonna
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -42,13 +42,14 @@ CIdealGas::~CIdealGas(void) {
 
 }
 
-void CIdealGas::SetTDState_rhoe (double rho, double e ){
+void CIdealGas::SetTDState_rhoe (double rho, double e ) {
+  
 	Density = rho;
 	StaticEnergy = e;
 	Pressure = Gamma_Minus_One*Density*StaticEnergy;
 	Temperature = Gamma_Minus_One*StaticEnergy/Gas_Constant;
 	SoundSpeed2 = Gamma*Pressure/Density;
-	Entropy = (Gamma/Gamma_Minus_One*log(Temperature) - log(Pressure))*Gas_Constant;
+	Entropy = (1.0/Gamma_Minus_One*log(Temperature) + log(1.0/Density))*Gas_Constant;
 	dPdrho_e = Gamma_Minus_One*StaticEnergy;
 	dPde_rho = Gamma_Minus_One*Density;
 	dTdrho_e = 0.0;
@@ -72,27 +73,24 @@ void CIdealGas::SetTDState_Prho (double P, double rho ){
 void CIdealGas::SetEnergy_Prho (double P, double rho ){
 	StaticEnergy = P/(rho*Gamma_Minus_One);
 
-
 }
 
 void CIdealGas::SetTDState_hs (double h, double s ){
 
 	double T = h*Gamma_Minus_One/Gas_Constant/Gamma;
-	double P = exp(Gamma/Gamma_Minus_One*log(T) - s/Gas_Constant);
+	double e = h/Gamma;
+	double v = exp(-1/Gamma_Minus_One*log(T) + s/Gas_Constant);
 
-	SetTDState_PT(P, T);
+	SetTDState_rhoe(1/v, e);
 
 }
 
-//void CIdealGas::SetDimensionTDState_pT (double p, double T, double R){
-//	Gas_Constant = R;
-//	Pressure = p;
-//	Temperature = T;
-//	Density = Pressure/(Gas_Constant*Temperature);
-//	SpeedSound = Gamma*Gas_Constant*Temperature;
-//	Energy = Pressure/(Gamma_Minus_One*Density);
-//
-//}
+void CIdealGas::SetTDState_rhoT (double rho, double T ){
+
+	double e = T*Gas_Constant/Gamma_Minus_One;
+	SetTDState_rhoe(rho, e);
+
+}
 
 
 

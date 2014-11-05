@@ -3,7 +3,7 @@
  * \file solution_direct_heat.cpp
  * \brief Main subrotuines for solving the heat equation.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -27,7 +27,7 @@ CHeatSolver::CHeatSolver(void) : CSolver() { }
 
 CHeatSolver::CHeatSolver(CGeometry *geometry, CConfig *config) : CSolver() {
   
-	unsigned short nMarker, iVar, nLineLets;
+	unsigned short nMarker, iDim, iVar, nLineLets;
   unsigned long iPoint;
   
   int rank = MASTER_NODE;
@@ -46,6 +46,11 @@ CHeatSolver::CHeatSolver(CGeometry *geometry, CConfig *config) : CSolver() {
 	Solution     = new double[nVar];
   Res_Sour     = new double[nVar];
   Residual_Max = new double[nVar]; Point_Max = new unsigned long[nVar];
+  Point_Max_Coord = new double*[nVar];
+  for (iVar = 0; iVar < nVar; iVar++) {
+    Point_Max_Coord[iVar] = new double[nDim];
+    for (iDim = 0; iDim < nDim; iDim++) Point_Max_Coord[iVar][iDim] = 0.0;
+  }
   
 	/*--- Point to point stiffness matrix (only for triangles)---*/
   
@@ -63,10 +68,11 @@ CHeatSolver::CHeatSolver(CGeometry *geometry, CConfig *config) : CSolver() {
   
 	StiffMatrixSpace.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
 	StiffMatrixTime.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
-  if (rank == MASTER_NODE) cout << "Initialize jacobian structure (Linear Elasticity)." << endl;
+  if (rank == MASTER_NODE) cout << "Initialize Jacobian structure (Linear Elasticity)." << endl;
 	Jacobian.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
   
-  if (config->GetKind_Linear_Solver_Prec() == LINELET) {
+  if ((config->GetKind_Linear_Solver_Prec() == LINELET) ||
+      (config->GetKind_Linear_Solver() == SMOOTHER_LINELET)) {
     nLineLets = Jacobian.BuildLineletPreconditioner(geometry, config);
     if (rank == MASTER_NODE) cout << "Compute linelet structure. " << nLineLets << " elements in each line (average)." << endl;
   }
@@ -109,7 +115,7 @@ CHeatSolver::CHeatSolver(CGeometry *geometry, CConfig *config) : CSolver() {
 	} else {
     
     cout << "Heat restart file not currently configured!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
     
 		string mesh_filename = config->GetSolution_FlowFileName();
 		ifstream restart_file;
@@ -120,7 +126,7 @@ CHeatSolver::CHeatSolver(CGeometry *geometry, CConfig *config) : CSolver() {
     
 		if (restart_file.fail()) {
 			cout << "There is no Heat restart file!!" << endl;
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
 		unsigned long index;
 		string text_line;
@@ -263,8 +269,8 @@ void CHeatSolver::Source_Residual(CGeometry *geometry,
   
 }
 
-void CHeatSolver::Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
-                                  CConfig *config, unsigned short iMesh) {
+void CHeatSolver::Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
+                                  CConfig *config, unsigned short iMesh, unsigned short iRKStep) {
   
 	unsigned long iElem, Point_0 = 0, Point_1 = 0, Point_2 = 0, Point_3 = 0, total_index, iPoint;
 	double *Coord_0 = NULL, *Coord_1= NULL, *Coord_2= NULL, *Coord_3 = NULL, Thermal_Diffusivity;
@@ -503,13 +509,14 @@ void CHeatSolver::SetResidual_DualTime(CGeometry *geometry, CSolver **solver_con
 void CHeatSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_container, CConfig *config) {
 
   unsigned short iVar;
-	unsigned long iPoint, total_index;
-  bool output;
+	unsigned long iPoint, total_index, IterLinSol;
 	
 	/*--- Build implicit system ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
     
 		/*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
+    
 		for (iVar = 0; iVar < nVar; iVar++) {
 			total_index = iPoint*nVar+iVar;
 			LinSysSol[total_index] = 0.0;
@@ -518,6 +525,7 @@ void CHeatSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_
 	}
   
   /*--- Initialize residual and solution at the ghost points ---*/
+  
   for (iPoint = geometry->GetnPointDomain(); iPoint < geometry->GetnPoint(); iPoint++) {
     for (iVar = 0; iVar < nVar; iVar++) {
       total_index = iPoint*nVar + iVar;
@@ -526,40 +534,13 @@ void CHeatSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_
     }
   }
 	
-	/*--- Solve the linear system (Krylov subspace methods) ---*/
-  CMatrixVectorProduct* mat_vec = new CSysMatrixVectorProduct(Jacobian, geometry, config);
-  
-  CPreconditioner* precond = NULL;
-  if (config->GetKind_Linear_Solver_Prec() == JACOBI) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CJacobiPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == ILU) {
-    Jacobian.BuildILUPreconditioner();
-    precond = new CILUPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LU_SGS) {
-    precond = new CLU_SGSPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LINELET) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CLineletPreconditioner(Jacobian, geometry, config);
-  }
+  /*--- Solve or smooth the linear system ---*/
   
   CSysSolve system;
-  
-  if (config->GetUnsteady_Simulation() == STEADY) output = true;
-  else output = false;
-  
-  if (config->GetKind_Linear_Solver() == BCGSTAB)
-    system.BCGSTAB(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(), config->GetLinear_Solver_Iter(), output);
-  else if (config->GetKind_Linear_Solver() == FGMRES)
-    system.FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(), config->GetLinear_Solver_Iter(), output);
-  
-  delete mat_vec;
-  delete precond;
+  IterLinSol = system.Solve(Jacobian, LinSysRes, LinSysSol, geometry, config);
   
 	/*--- Update solution (system written in terms of increments) ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
 		for (iVar = 0; iVar < nVar; iVar++) {
 			if (config->GetUnsteady_Simulation() == STEADY) node[iPoint]->SetSolution(iVar, LinSysSol[iPoint*nVar+iVar]);
@@ -568,27 +549,32 @@ void CHeatSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_
 	}
   
   /*--- MPI solution ---*/
+  
   Set_MPI_Solution(geometry, config);
   
   /*---  Compute the residual Ax-f ---*/
+  
 	Jacobian.ComputeResidual(LinSysSol, LinSysRes, LinSysAux);
   
   /*--- Set maximum residual to zero ---*/
+  
 	for (iVar = 0; iVar < nVar; iVar++) {
 		SetRes_RMS(iVar, 0.0);
     SetRes_Max(iVar, 0.0, 0);
   }
   
   /*--- Compute the residual ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
 		for (iVar = 0; iVar < nVar; iVar++) {
 			total_index = iPoint*nVar+iVar;
 			AddRes_RMS(iVar, LinSysAux[total_index]*LinSysAux[total_index]);
-      AddRes_Max(iVar, fabs(LinSysAux[total_index]), geometry->node[iPoint]->GetGlobalIndex());
+      AddRes_Max(iVar, fabs(LinSysAux[total_index]), geometry->node[iPoint]->GetGlobalIndex(), geometry->node[iPoint]->GetCoord());
 		}
 	}
   
   /*--- Compute the root mean square residual ---*/
+  
   SetResidual_RMS(geometry, config);
   
 }

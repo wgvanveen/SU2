@@ -2,7 +2,7 @@
  * \file config_structure.cpp
  * \brief Main file for reading the config file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -30,37 +30,48 @@ CConfig::CConfig(char case_filename[MAX_STRING_SIZE], unsigned short val_softwar
 #endif
 
   /*--- Initialize pointers to Null---*/
+  
   SetPointersNull();
 
   /*--- Reading config options  ---*/
+  
   SetConfig_Options(val_iZone, val_nZone);
 
   /*--- Parsing the config file  ---*/
+  
   SetParsing(case_filename);
 
   /*--- Configuration file postprocessing ---*/
+  
   SetPostprocessing(val_software, val_iZone, val_nDim);
 
   /*--- Configuration file boundaries/markers seting ---*/
+  
   SetMarkers(val_software, val_iZone);
 
   /*--- Configuration file output ---*/
+  
   if ((rank == MASTER_NODE) && (verb_level == VERB_HIGH) && (val_iZone != 1))
     SetOutput(val_software, val_iZone);
 
 }
 
 CConfig::CConfig(char case_filename[MAX_STRING_SIZE], unsigned short val_software) {
+  
   /*--- Initialize pointers to Null---*/
+  
   SetPointersNull();
 
   /*--- Reading config options  ---*/
+  
   SetConfig_Options(1, 1);
 
   /*--- Parsing the config file  ---*/
+  
   SetParsing(case_filename);
 
   /*--- Configuration file postprocessing ---*/
+  
   SetPostprocessing(val_software, 1, 1);
   
 }
@@ -121,6 +132,11 @@ void CConfig::SetPointersNull(void){
   RefOriginMoment_X = NULL;   RefOriginMoment_Y = NULL;   RefOriginMoment_Z = NULL;
   MoveMotion_Origin = NULL;
 
+  /*--- Variable initialization ---*/
+  
+  ExtIter = 0;
+  IntIter = 0;
+  
   /*--- Reacting chemistry, collisions, plasma ---*/
 
   Reactions=NULL;                 Omega00=NULL;               Omega11=NULL;
@@ -132,13 +148,15 @@ void CConfig::SetPointersNull(void){
   CharVibTemp=NULL;             RotationModes=NULL;   Ref_Temperature=NULL;
   Tcf_a=NULL;    Tcf_b=NULL;    Tcb_a=NULL;    Tcb_b=NULL;
   Diss=NULL;
-
+  
 }
 
 void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZone) {
+  
   double default_vec_3d[3];
   double default_vec_2d[2];
   double default_vec_6d[6];
+  
   nZone = val_nZone;
   iZone = val_iZone;
 
@@ -182,7 +200,7 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addEnumOption("SYSTEM_MEASUREMENTS", SystemMeasurements, Measurements_Map, SI);
 
   /* CONFIG_CATEGORY: FluidModel */
-
+  /* DESCRIPTION: Fluid model */
   addEnumOption("FLUID_MODEL", Kind_FluidModel, FluidModel_Map, STANDARD_AIR);
 
 
@@ -201,16 +219,16 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   /* DESCRIPTION: Critical Temperature, default value for AIR */
   addDoubleOption("CRITICAL_TEMPERATURE", Temperature_Critical, 131.00);
   /* DESCRIPTION: Critical Pressure, default value for MDM */
-  addDoubleOption("CRITICAL_PRESSURE", Pressure_Critical, 3588550);
+  addDoubleOption("CRITICAL_PRESSURE", Pressure_Critical, 3588550.0);
   /* DESCRIPTION: Critical Density, default value for MDM */
-  addDoubleOption("CRITICAL_DENSITY", Density_Critical, 263);
+  addDoubleOption("CRITICAL_DENSITY", Density_Critical, 263.0);
 
   /*--- Options related to VAN der WAALS MODEL and PENG ROBINSON ---*/
   /* DESCRIPTION: Critical Density, default value for MDM */
    addDoubleOption("ACENTRIC_FACTOR", Acentric_Factor, 0.035);
 
    /*--- Options related to Viscosity Model ---*/
-
+  /* DESCRIPTION: model of the viscosity */
   addEnumOption("VISCOSITY_MODEL", Kind_ViscosityModel, ViscosityModel_Map, SUTHERLAND);
 
   /*--- Options related to Costant Viscosity Model ---*/
@@ -236,7 +254,7 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   /* DESCRIPTION: Turbulent Prandtl number (0.9 (air), only for compressible flows) */
   addDoubleOption("PRANDTL_TURB", Prandtl_Turb, 0.90);
   /* DESCRIPTION: Value of the Bulk Modulus  */
-  addDoubleOption("BULK_MODULUS", Bulk_Modulus, 2.15E9);
+  addDoubleOption("BULK_MODULUS", Bulk_Modulus, 1.42E5);
   /* DESCRIPTION: Artifical compressibility factor  */
   addDoubleOption("ARTCOMP_FACTOR", ArtComp_Factor, 1.0);
   /* DESCRIPTION:  Mach number (non-dimensional, based on the free-stream values) */
@@ -401,6 +419,10 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addStringDoubleListOption("MARKER_NACELLE_INFLOW", nMarker_NacelleInflow, Marker_NacelleInflow, FanFace_Mach_Target);
   /* DESCRIPTION: Engine subsonic intake region */
   addBoolOption("SUBSONIC_NACELLE_INFLOW", Engine_Intake, false);
+  default_vec_6d[0] = -1E15; default_vec_6d[1] = -1E15; default_vec_6d[2] = -1E15;
+  default_vec_6d[3] =  1E15; default_vec_6d[4] =  1E15; default_vec_6d[5] =  1E15;
+  /* DESCRIPTION: Coordinates of the box to impose a subsonic nacellle (Xmin, Ymin, Zmin, Xmax, Ymax, Zmax) */
+  addDoubleArrayOption("SUBSONIC_NACELLE_BOX", 6, Subsonic_Nacelle_Box, default_vec_6d);
   /* DESCRIPTION: Nacelle exhaust boundary marker(s)
    Format: (nacelle exhaust marker, total nozzle temp, total nozzle pressure, ... )*/
   addInletFixedOption("MARKER_NACELLE_EXHAUST", nMarker_NacelleExhaust, Marker_NacelleExhaust, Nozzle_Ttotal, Nozzle_Ptotal);
@@ -511,13 +533,15 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   
   /* CONFIG_CATEGORY: Convergence*/
   /*--- Options related to convergence ---*/
-
+  
   /* DESCRIPTION: Convergence criteria */
   addEnumOption("CONV_CRITERIA", ConvCriteria, Converge_Crit_Map, RESIDUAL);
   /* DESCRIPTION: Residual reduction (order of magnitude with respect to the initial value) */
   addDoubleOption("RESIDUAL_REDUCTION", OrderMagResidual, 3.0);
   /* DESCRIPTION: Min value of the residual (log10 of the residual) */
   addDoubleOption("RESIDUAL_MINVAL", MinLogResidual, -8.0);
+  /* DESCRIPTION: Flow functional for the Residual criteria */
+  addEnumOption("RESIDUAL_FUNC_FLOW", Residual_Func_Flow, Residual_Map, RHO_RESIDUAL);
   /* DESCRIPTION: Iteration number to begin convergence monitoring */
   addUnsignedLongOption("STARTCONV_ITER", StartConv_Iter, 5);
   /* DESCRIPTION: Number of elements to apply the criteria */
@@ -551,15 +575,9 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   /* DESCRIPTION: Jacobi implicit smoothing of the correction */
   addUShortListOption("MG_CORRECTION_SMOOTH", nMG_CorrecSmooth, MG_CorrecSmooth);
   /* DESCRIPTION: Damping factor for the residual restriction */
-  addDoubleOption("MG_DAMP_RESTRICTION", Damp_Res_Restric, 0.9);
+  addDoubleOption("MG_DAMP_RESTRICTION", Damp_Res_Restric, 0.75);
   /* DESCRIPTION: Damping factor for the correction prolongation */
-  addDoubleOption("MG_DAMP_PROLONGATION", Damp_Correc_Prolong, 0.9);
-  /* DESCRIPTION: CFL reduction factor on the coarse levels */
-  addDoubleOption("MG_CFL_REDUCTION", MG_CFLRedCoeff, 0.9);
-  /* DESCRIPTION: Maximum number of children in the agglomeration stage */
-  addUnsignedShortOption("MAX_CHILDREN", MaxChildren, 500);
-  /* DESCRIPTION: Maximum length of an agglomerated element (relative to the domain) */
-  addDoubleOption("MAX_DIMENSION", MaxDimension, 0.1);
+  addDoubleOption("MG_DAMP_PROLONGATION", Damp_Correc_Prolong, 0.75);
 
   /* CONFIG_CATEGORY: Spatial Discretization */
   /*--- Options related to the spatial discretization ---*/
@@ -568,13 +586,13 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addEnumOption("NUM_METHOD_GRAD", Kind_Gradient_Method, Gradient_Map, WEIGHTED_LEAST_SQUARES);
   /* DESCRIPTION: Coefficient for the limiter */
   addDoubleOption("LIMITER_COEFF", LimiterCoeff, 0.5);
+  /* DESCRIPTION: Freeze the value of the limiter after a number of iterations */
+  addUnsignedLongOption("LIMITER_ITER", LimiterIter, 999999);
   /* DESCRIPTION: Coefficient for detecting the limit of the sharp edges */
   addDoubleOption("SHARP_EDGES_COEFF", SharpEdgesCoeff, 3.0);
 
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_FLOW", Kind_ConvNumScheme_Flow, Kind_Centered_Flow, Kind_Upwind_Flow);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_FLOW", Kind_ViscNumScheme_Flow, Viscous_Map, AVG_GRAD_CORRECTED);
   /* DESCRIPTION: Spatial numerical order integration */
   addEnumOption("SPATIAL_ORDER_FLOW", SpatialOrder_Flow, SpatialOrder_Map, SECOND_ORDER);
   /* DESCRIPTION: Slope limiter */
@@ -585,8 +603,6 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
 
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_ADJFLOW", Kind_ConvNumScheme_AdjFlow, Kind_Centered_AdjFlow, Kind_Upwind_AdjFlow);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_ADJFLOW", Kind_ViscNumScheme_AdjFlow, Viscous_Map, NO_VISCOUS);
   /* DESCRIPTION: Spatial numerical order integration */
   addEnumOption("SPATIAL_ORDER_ADJFLOW", SpatialOrder_AdjFlow, SpatialOrder_Map, SECOND_ORDER);
   /* DESCRIPTION: Slope limiter */
@@ -601,22 +617,16 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addEnumOption("SLOPE_LIMITER_TURB", Kind_SlopeLimit_Turb, Limiter_Map, VENKATAKRISHNAN);
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_TURB", Kind_ConvNumScheme_Turb, Kind_Centered_Turb, Kind_Upwind_Turb);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_TURB", Kind_ViscNumScheme_Turb, Viscous_Map, AVG_GRAD_CORRECTED);
-
+  
   /* DESCRIPTION: Spatial numerical order integration */
   addEnumOption("SPATIAL_ORDER_ADJTURB", SpatialOrder_AdjTurb, SpatialOrder_Map, FIRST_ORDER);
   /* DESCRIPTION: Slope limiter */
   addEnumOption("SLOPE_LIMITER_ADJTURB", Kind_SlopeLimit_AdjTurb, Limiter_Map, VENKATAKRISHNAN);
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_ADJTURB", Kind_ConvNumScheme_AdjTurb, Kind_Centered_AdjTurb, Kind_Upwind_AdjTurb);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_ADJTURB", Kind_ViscNumScheme_AdjTurb, Viscous_Map, NO_VISCOUS);
 
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_LIN", Kind_ConvNumScheme_LinFlow, Kind_Centered_LinFlow, Kind_Upwind_LinFlow);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_LIN", Kind_ViscNumScheme_LinFlow, Viscous_Map, NO_VISCOUS);
   default_vec_2d[0] = 0.15; default_vec_2d[1] = 0.02;
   /* DESCRIPTION: 1st, 2nd and 4th order artificial dissipation coefficients */
   addDoubleArrayOption("AD_COEFF_LIN", 2, Kappa_LinFlow, default_vec_2d);
@@ -627,13 +637,9 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addEnumOption("SLOPE_LIMITER_ADJLEVELSET", Kind_SlopeLimit_AdjLevelSet, Limiter_Map, VENKATAKRISHNAN);
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_ADJLEVELSET", Kind_ConvNumScheme_AdjLevelSet, Kind_Centered_AdjLevelSet, Kind_Upwind_AdjLevelSet);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_ADJLEVELSET", Kind_ViscNumScheme_AdjLevelSet, Viscous_Map, NO_VISCOUS);
 
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_TNE2", Kind_ConvNumScheme_TNE2, Kind_Centered_TNE2, Kind_Upwind_TNE2);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_TNE2", Kind_ViscNumScheme_TNE2, Viscous_Map, NO_VISCOUS);
   /* DESCRIPTION: Spatial numerical order integration */
   addEnumOption("SPATIAL_ORDER_TNE2", SpatialOrder_TNE2, SpatialOrder_Map, SECOND_ORDER);
   /* DESCRIPTION: Slope limiter */
@@ -644,8 +650,6 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
 
   /* DESCRIPTION: Convective numerical method */
   addConvectOption("CONV_NUM_METHOD_ADJTNE2", Kind_ConvNumScheme_AdjTNE2, Kind_Centered_AdjTNE2, Kind_Upwind_AdjTNE2);
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_ADJTNE2", Kind_ViscNumScheme_AdjTNE2, Viscous_Map, NO_VISCOUS);
   /* DESCRIPTION: Spatial numerical order integration */
   addEnumOption("SPATIAL_ORDER_ADJTNE2", SpatialOrder_AdjTNE2, SpatialOrder_Map, SECOND_ORDER);
   /* DESCRIPTION: Slope limiter */
@@ -653,18 +657,6 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   default_vec_3d[0] = 0.15; default_vec_3d[1] = 0.5; default_vec_3d[2] = 0.02;
   /* DESCRIPTION: 1st, 2nd and 4th order artificial dissipation coefficients */
   addDoubleArrayOption("AD_COEFF_ADJTNE2", 3, Kappa_AdjTNE2, default_vec_3d);
-
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_WAVE", Kind_ViscNumScheme_Wave, Viscous_Map, GALERKIN);
-
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_POISSON", Kind_ViscNumScheme_Poisson, Viscous_Map, NO_VISCOUS);
-
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_FEA", Kind_ViscNumScheme_FEA, Viscous_Map, GALERKIN);
-
-  /* DESCRIPTION: Viscous numerical method */
-  addEnumOption("VISC_NUM_METHOD_HEAT", Kind_ViscNumScheme_Heat, Viscous_Map, GALERKIN);
 
   /* CONFIG_CATEGORY: Adjoint and Gradient */
   /*--- Options related to the adjoint and gradient ---*/
@@ -697,9 +689,7 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addEnumOption("DISCRETE_EQNS", Discrete_Eqns, DiscreteEqns_Map, NONE_EQNS);
   /* DESCRIPTION: Adjoint frozen viscosity */
   addBoolOption("FROZEN_VISC", Frozen_Visc, true);
-  /* DESCRIPTION:  */
-  addDoubleOption("CTE_VISCOUS_DRAG", CteViscDrag, 0.0);
-  /* DESCRIPTION:  */
+   /* DESCRIPTION:  */
   addDoubleOption("FIX_AZIMUTHAL_LINE", FixAzimuthalLine, 90.0);
   /* DESCRIPTION: Remove sharp edges from the sensitivity evaluation */
   addBoolOption("SENS_REMOVE_SHARP", Sens_Remove_Sharp, false);
@@ -791,10 +781,14 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   addBoolOption("WRT_RESTART", Wrt_Restart, true);
   /* DESCRIPTION: Output residual info to solution/restart file */
   addBoolOption("WRT_RESIDUALS", Wrt_Residuals, false);
+  /* DESCRIPTION: Output residual info to solution/restart file */
+  addBoolOption("WRT_LIMITERS", Wrt_Limiters, false);
+  /* DESCRIPTION: Output residual info to solution/restart file */
+  addBoolOption("WRT_SHARPEDGES", Wrt_SharpEdges, false);
   /* DESCRIPTION: Output the rind layers in the solution files */
   addBoolOption("WRT_HALO", Wrt_Halo, false);
   /* DESCRIPTION: Output averaged stagnation pressure on specified exit marker. */
-  addBoolOption("1D_OUTPUT", Wrt_1D_Output, false);
+  addBoolOption("ONE_D_OUTPUT", Wrt_1D_Output, false);
 
   /* CONFIG_CATEGORY: Dynamic mesh definition */
   /*--- Options related to dynamic meshes ---*/
@@ -911,6 +905,8 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   default_vec_3d[0] = 0.0; default_vec_3d[1] = 1.0; default_vec_3d[2] = 1.0;
   /* DESCRIPTION: Integration limits of the equivalent area ( xmin, xmax, Dist_NearField ) */
   addDoubleArrayOption("EA_INT_LIMIT", 3, EA_IntLimit, default_vec_3d);
+  /* DESCRIPTION: Equivalent area scaling factor */
+  addDoubleOption("EA_SCALE_FACTOR", EA_ScaleFactor, 1E-7);
 
 	/* CONFIG_CATEGORY: Reacting Flow */
   /*--- Options related to the reacting gas mixtures ---*/
@@ -980,9 +976,9 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
 	/* DESCRIPTION: Visualize the deformation */
   addBoolOption("VISUALIZE_DEFORMATION", Visualize_Deformation, false);
   /* DESCRIPTION: Print the residuals during mesh deformation to the console */
-  addBoolOption("DEFORM_CONSOLE_OUTPUT", Deform_Output, true);
+  addBoolOption("DEFORM_CONSOLE_OUTPUT", Deform_Output, false);
   /* DESCRIPTION: Number of nonlinear deformation iterations (surface deformation increments) */
-  addUnsignedLongOption("DEFORM_NONLINEAR_ITER", GridDef_Nonlinear_Iter, 1);
+  addUnsignedLongOption("DEFORM_NONLINEAR_ITER", GridDef_Nonlinear_Iter, 5);
   /* DESCRIPTION: Number of smoothing iterations for FEA mesh deformation */
   addUnsignedLongOption("DEFORM_LINEAR_ITER", GridDef_Linear_Iter, 500);
   /* DESCRIPTION: Factor to multiply smallest volume for deform tolerance (0.001 default) */
@@ -1060,7 +1056,7 @@ void CConfig::SetConfig_Options(unsigned short val_iZone, unsigned short val_nZo
   /* CONFIG_CATEGORY:FFD point inversion */
 
   /* DESCRIPTION: Number of total iterations in the FFD point inversion */
-  addUnsignedShortOption("FFD_ITERATIONS", nFFD_Iter, 1000);
+  addUnsignedShortOption("FFD_ITERATIONS", nFFD_Iter, 500);
 
   /* DESCRIPTION: Free surface damping coefficient */
 	addDoubleOption("FFD_TOLERANCE", FFD_Tol, 1E-8);
@@ -1115,7 +1111,7 @@ void CConfig::SetParsing(char case_filename[MAX_STRING_SIZE]) {
 
   if (case_file.fail()) {
     cout << "There is no configuration file!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   string errorString;
@@ -1174,7 +1170,7 @@ void CConfig::SetParsing(char case_filename[MAX_STRING_SIZE]) {
   if (errorString.size() != 0){
 //    SU2MPI::PrintAndFinalize(errorString);
     cout << errorString << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   // Set the default values for all of the options that weren't set
@@ -1187,12 +1183,10 @@ void CConfig::SetParsing(char case_filename[MAX_STRING_SIZE]) {
 
 void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_izone, unsigned short val_nDim) {
 
-  unsigned short iZone;
+  unsigned short iZone, iCFL;
 
-#ifndef HAVE_MPI
   int size = SINGLE_NODE;
-#else
-  int size;
+#ifdef HAVE_MPI
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 #endif
 
@@ -1212,7 +1206,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   if ((Kind_SU2 != SU2_PRT) && (Kind_SU2 != SU2_CFD) && (Kind_SU2 != SU2_SOL)) {
     if (Mesh_FileFormat == CGNS) {
       cout << "This software is not prepared for CGNS, please switch to SU2" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1251,6 +1245,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
 
   if ((Kind_Solver == LINEAR_ELASTICITY) || (Kind_Solver == HEAT_EQUATION) ||
       (Kind_Solver == WAVE_EQUATION) || (Kind_Solver == POISSON_EQUATION)) {
+    nMultiLevel = 0;
     if (Unsteady_Simulation == STEADY) nExtIter = 1;
     else Unst_nIntIter = 2;
   }
@@ -1273,7 +1268,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
       Kind_GridMovement[iZone] = NO_MOVEMENT;
     if (Grid_Movement == true) {
       cout << "GRID_MOVEMENT = YES but no type provided in GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1308,7 +1303,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
       (Kind_GridMovement[ZONE_0] != ROTATING_FRAME) &&
       (nGridMovement != nMarker_Moving)) {
     cout << "Number of GRID_MOVEMENT_KIND must match number of MARKER_MOVING!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   /*--- Make sure that there aren't more than one rigid motion or
@@ -1317,12 +1312,12 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   if (Grid_Movement && (Kind_GridMovement[ZONE_0] == RIGID_MOTION) &&
       (nGridMovement > 1)) {
     cout << "Can not support more than one type of rigid motion in GRID_MOVEMENT_KIND!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   if (Grid_Movement && (Kind_GridMovement[ZONE_0] == ROTATING_FRAME) &&
       (nGridMovement > 1)) {
     cout << "Can not support more than one rotating frame in GRID_MOVEMENT_KIND!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   /*--- In case the grid movement parameters have not been declared in the
@@ -1341,7 +1336,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nMotion_Origin_X != nGridMovement)) {
       cout << "Length of MOTION_ORIGIN_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1352,7 +1347,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nMotion_Origin_Y != nGridMovement)) {
       cout << "Length of MOTION_ORIGIN_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1363,7 +1358,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nMotion_Origin_Z != nGridMovement)) {
       cout << "Length of MOTION_ORIGIN_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1374,7 +1369,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nMoveMotion_Origin != nGridMovement)) {
       cout << "Length of MOVE_MOTION_ORIGIN must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1387,7 +1382,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nTranslation_Rate_X != nGridMovement)) {
       cout << "Length of TRANSLATION_RATE_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1398,7 +1393,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nTranslation_Rate_Y != nGridMovement)) {
       cout << "Length of TRANSLATION_RATE_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1409,7 +1404,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nTranslation_Rate_Z != nGridMovement)) {
       cout << "Length of TRANSLATION_RATE_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1422,7 +1417,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nRotation_Rate_X != nGridMovement)) {
       cout << "Length of ROTATION_RATE_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1433,7 +1428,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nRotation_Rate_Y != nGridMovement)) {
       cout << "Length of ROTATION_RATE_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1444,7 +1439,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nRotation_Rate_Z != nGridMovement)) {
       cout << "Length of ROTATION_RATE_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1457,7 +1452,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Omega_X != nGridMovement)) {
       cout << "Length of PITCHING_OMEGA_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1468,7 +1463,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Omega_Y != nGridMovement)) {
       cout << "Length of PITCHING_OMEGA_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1479,7 +1474,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Omega_Z != nGridMovement)) {
       cout << "Length of PITCHING_OMEGA_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1492,7 +1487,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Ampl_X != nGridMovement)) {
       cout << "Length of PITCHING_AMPL_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1503,7 +1498,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Ampl_Y != nGridMovement)) {
       cout << "Length of PITCHING_AMPL_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1514,7 +1509,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Ampl_Z != nGridMovement)) {
       cout << "Length of PITCHING_AMPL_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1527,7 +1522,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Phase_X != nGridMovement)) {
       cout << "Length of PITCHING_PHASE_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1538,7 +1533,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Phase_Y != nGridMovement)) {
       cout << "Length of PITCHING_PHASE_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1549,7 +1544,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPitching_Phase_Z != nGridMovement)) {
       cout << "Length of PITCHING_PHASE_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1562,7 +1557,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Omega_X != nGridMovement)) {
       cout << "Length of PLUNGING_OMEGA_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1573,7 +1568,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Omega_Y != nGridMovement)) {
       cout << "Length of PLUNGING_OMEGA_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1584,7 +1579,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Omega_Z != nGridMovement)) {
       cout << "Length of PLUNGING_OMEGA_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1597,7 +1592,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Ampl_X != nGridMovement)) {
       cout << "Length of PLUNGING_AMPL_X must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1608,7 +1603,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Ampl_Y != nGridMovement)) {
       cout << "Length of PLUNGING_AMPL_Y must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1619,7 +1614,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   } else {
     if (Grid_Movement && (nPlunging_Ampl_Z != nGridMovement)) {
       cout << "Length of PLUNGING_AMPL_Z must match GRID_MOVEMENT_KIND!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1686,7 +1681,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
 
   if ((nRefOriginMoment_X != nRefOriginMoment_Y) || (nRefOriginMoment_X != nRefOriginMoment_Z) ) {
     cout << "ERROR: Length of REF_ORIGIN_MOMENT_X, REF_ORIGIN_MOMENT_Y and REF_ORIGIN_MOMENT_Z must be the same!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   if (RefOriginMoment_X == NULL) {
@@ -1706,7 +1701,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
     }
     else if (nRefOriginMoment_X != nMarker_Monitoring) {
       cout << "ERROR: Length of REF_ORIGIN_MOMENT_X must match number of Monitoring Markers!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1727,7 +1722,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
     }
     else if (nRefOriginMoment_Y != nMarker_Monitoring) {
       cout << "ERROR: Length of REF_ORIGIN_MOMENT_Y must match number of Monitoring Markers!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1748,7 +1743,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
     }
     else if (nRefOriginMoment_Z != nMarker_Monitoring) {
       cout << "ERROR: Length of REF_ORIGIN_MOMENT_Z must match number of Monitoring Markers!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -1941,8 +1936,9 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   CFL = new double[nCFL];
   CFL[0] = CFLFineGrid;
   if (Adjoint) CFL[0] = CFL[0] * CFLRedCoeff_AdjFlow;
-  for (unsigned short iCFL = 1; iCFL < nCFL; iCFL++)
-    CFL[iCFL] = CFL[iCFL-1]*MG_CFLRedCoeff;
+  
+  for (iCFL = 1; iCFL < nCFL; iCFL++)
+    CFL[iCFL] = CFL[iCFL-1];
 
   if (nRKStep == 0) {
     nRKStep = 1;
@@ -1951,28 +1947,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
 
   if ((Kind_SU2 == SU2_CFD) && (Kind_Solver == NO_SOLVER)) {
     cout << "PHYSICAL_PROBLEM must be set in the configuration file" << endl;
-    exit(1);
-  }
-
-  if (((Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS) || (Kind_Solver == ADJ_NAVIER_STOKES) || (Kind_Solver == ADJ_RANS))
-      && (Kind_ViscNumScheme_Flow == NONE)) {
-    cout << "You must define a viscous numerical method for the flow equations!!" << endl;
-    exit(1);
-  }
-
-  if (((Kind_Solver == ADJ_NAVIER_STOKES) || (Kind_Solver == ADJ_RANS)) && (Kind_ViscNumScheme_AdjFlow == NONE)) {
-    cout << "You must define a viscous numerical method for the adjoint Navier-Stokes equations!!" << endl;
-    exit(1);
-  }
-
-  if ((Kind_Solver == TNE2_NAVIER_STOKES) && (Kind_ViscNumScheme_TNE2 == NONE)) {
-    cout << "You must define a viscous numerical method for the TNE2 Navier-Stokes equations!!" << endl;
-    exit(1);
-  }
-
-  if ((Kind_Solver == ADJ_TNE2_NAVIER_STOKES) && (Kind_ViscNumScheme_AdjTNE2 == NONE)) {
-    cout << "You must define a viscous numerical method for the adjoint TNE2 Navier-Stokes equations!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   /*--- Set a flag for viscous simulations ---*/
@@ -1988,7 +1963,7 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   /*--- Re-scale the length based parameters. The US system uses feet, 
    but SU2 assumes that the grid is in inches ---*/
   
-  if (SystemMeasurements == US) {
+  if ((SystemMeasurements == US) && (Kind_SU2 == SU2_CFD)) {
 
     for (iMarker = 0; iMarker < nMarker_Monitoring; iMarker++) {
       RefOriginMoment_X[iMarker] = RefOriginMoment_X[iMarker]/12.0;
@@ -2007,6 +1982,13 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
     else RefAreaCoeff = RefAreaCoeff/144.0;
     Length_Reynolds = Length_Reynolds/12.0;
     RefElemLength = RefElemLength/12.0;
+    
+    EA_IntLimit[0] = EA_IntLimit[0]/12.0;
+    EA_IntLimit[1] = EA_IntLimit[1]/12.0;
+    EA_IntLimit[2] = EA_IntLimit[2]/12.0;
+    
+    Section_Location[0] = Section_Location[0]/12.0;
+    Section_Location[1] = Section_Location[1]/12.0;
     
   }
 
@@ -2669,9 +2651,8 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
   /*--- Check for constant lift mode  ---*/
   if (Fixed_CL_Mode) {
 
-    /*--- Set the initial AoA to zero. This will be updated after an
-     interval of iterations of the flow solver. ---*/
-    AoA = 0.0;
+    /*--- The initial AoA will be taken as the value input in the 
+     config file (the default is zero). ---*/
 
     /*--- We will force the use of the cauchy convergence criteria for
      constant lift mode. ---*/
@@ -2685,6 +2666,13 @@ void CConfig::SetPostprocessing(unsigned short val_software, unsigned short val_
 
   }
 
+  /*--- Check for 2nd order w/ limiting for JST and correct ---*/
+  
+  if ((Kind_ConvNumScheme_Flow == SPACE_CENTERED) && (Kind_Centered_Flow == JST) && (SpatialOrder_Flow == SECOND_ORDER_LIMITER))
+    SpatialOrder_Flow = SECOND_ORDER;
+  
+  if ((Kind_ConvNumScheme_AdjFlow == SPACE_CENTERED) && (Kind_Centered_AdjFlow == JST) && (SpatialOrder_AdjFlow == SECOND_ORDER_LIMITER))
+    SpatialOrder_AdjFlow = SECOND_ORDER;
 
   delete [] tmp_smooth;
 
@@ -3034,7 +3022,7 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
     case SU2_SOL: cout << "|  |_____/   \\____/  |____|   Suite (Solution Exporting Code)           |" << endl; break;
   }
 
-  cout << "|                             Release 3.2.0 \"eagle\"                     |" << endl;
+  cout << "|                             Release 3.2.3 \"eagle\"                     |" << endl;
   cout <<"-------------------------------------------------------------------------" << endl;
   cout << "| SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).       |" << endl;
   cout << "| SU2 is distributed in the hope that it will be useful,                |" << endl;
@@ -3436,8 +3424,8 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "Venkatakrishnan slope-limiting method, with constant: " << LimiterCoeff <<". "<< endl;
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
@@ -3458,8 +3446,8 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "Venkatakrishnan slope-limiting method, with constant: " << LimiterCoeff <<". "<< endl;
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
@@ -3491,8 +3479,8 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "Venkatakrishnan slope-limiting method, with constant: " << LimiterCoeff <<". "<< endl;
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
@@ -3509,7 +3497,6 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
           cout << "JST viscous coefficients (1st, 2nd, & 4th): " << Kappa_1st_AdjFlow
           << ", " << Kappa_2nd_AdjFlow << ", " << Kappa_4th_AdjFlow <<"."<< endl;
           cout << "The method includes a grid stretching correction (p = 0.3)."<< endl;
-          cout << "The reference sharp edge distance is: " << SharpEdgesCoeff*RefElemLength*LimiterCoeff <<". "<< endl;
           cout << "Second order integration." << endl;
         }
         if (Kind_Centered_AdjFlow == LAX) {
@@ -3534,13 +3521,15 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 cout << "The reference sharp edge distance is: " << SharpEdgesCoeff*RefElemLength*LimiterCoeff <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
         }
       }
+      
+      cout << "The reference sharp edge distance is: " << SharpEdgesCoeff*RefElemLength*LimiterCoeff <<". "<< endl;
 
     }
 
@@ -3561,8 +3550,8 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 cout << "The reference sharp edge distance is: " << SharpEdgesCoeff*RefElemLength*LimiterCoeff <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
@@ -3604,8 +3593,8 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
                 cout << "The reference element size is: " << RefElemLength <<". "<< endl;
                 cout << "The reference sharp edge distance is: " << SharpEdgesCoeff*RefElemLength*LimiterCoeff <<". "<< endl;
                 break;
-              case MINMOD:
-                cout << "Minmod slope-limiting method." << endl;
+              case BARTH_JESPERSEN:
+                cout << "Barth-Jespersen slope-limiting method." << endl;
                 break;
             }
             break;
@@ -3633,17 +3622,11 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
     }
 
     if ((Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS)) {
-      switch (Kind_ViscNumScheme_Flow) {
-        case AVG_GRAD: cout << "Average of gradients (viscous flow terms)." << endl; break;
-        case AVG_GRAD_CORRECTED: cout << "Average of gradients with correction (viscous flow terms)." << endl; break;
-      }
+        cout << "Average of gradients with correction (viscous flow terms)." << endl;
     }
 
     if (Kind_Solver == TNE2_NAVIER_STOKES) {
-      switch (Kind_ViscNumScheme_TNE2) {
-        case AVG_GRAD: cout << "Average of gradients (viscous flow terms)." << endl; break;
-        case AVG_GRAD_CORRECTED: cout << "Average of gradients with correction (viscous flow terms)." << endl; break;
-      }
+        cout << "Average of gradients with correction (viscous flow terms)." << endl;
     }
 
     if ((Kind_Solver == EULER) || (Kind_Solver == NAVIER_STOKES) || (Kind_Solver == RANS))
@@ -3653,25 +3636,20 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
       cout << "Piecewise constant integration of the adjoint source terms." << endl;
 
     if ((Kind_Solver == ADJ_NAVIER_STOKES) || (Kind_Solver == ADJ_RANS)) {
-      switch (Kind_ViscNumScheme_AdjFlow) {
-        case AVG_GRAD: cout << "Average of gradients (viscous adjoint terms)." << endl; break;
-        case AVG_GRAD_CORRECTED: cout << "Average of gradients with correction (viscous adjoint terms)." << endl; break;
-      }
+      cout << "Average of gradients with correction (viscous adjoint terms)." << endl;
     }
 
     if (Kind_Solver == RANS) {
-      if (Kind_ViscNumScheme_Turb == AVG_GRAD) cout << "Average of gradients (viscous turbulence terms)." << endl;
-      if (Kind_ViscNumScheme_Turb == AVG_GRAD_CORRECTED) cout << "Average of gradients with correction (viscous turbulence terms)." << endl;
+      cout << "Average of gradients with correction (viscous turbulence terms)." << endl;
       cout << "Piecewise constant integration of the turbulence model source terms." << endl;
     }
 
     if (Kind_Solver == POISSON_EQUATION) {
-      if (Kind_ViscNumScheme_Poisson == GALERKIN) cout << "Galerkin method for viscous terms computation of the poisson potential equation." << endl;
+      cout << "Galerkin method for viscous terms computation of the poisson potential equation." << endl;
     }
 
     if ((Kind_Solver == ADJ_RANS) && (!Frozen_Visc)) {
-      if (Kind_ViscNumScheme_AdjTurb == AVG_GRAD) cout << "Average of gradients (1st order) for computation of adjoint viscous turbulence terms." << endl;
-      if (Kind_ViscNumScheme_AdjTurb == AVG_GRAD_CORRECTED) cout << "Average of gradients with correction (2nd order) for computation of adjoint viscous turbulence terms." << endl;
+      cout << "Average of gradients with correction (2nd order) for computation of adjoint viscous turbulence terms." << endl;
       cout << "Piecewise constant integration of the turbulence adjoint model source terms." << endl;
       if (Kind_TimeIntScheme_AdjTurb == EULER_IMPLICIT) cout << "Euler implicit method for the turbulent adjoint equation." << endl;
     }
@@ -3742,6 +3720,22 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
               cout << "Max number of iterations: "<< Linear_Solver_Iter <<"."<<endl;
               cout << "Relaxation coefficient: "<< Linear_Solver_Relax <<"."<<endl;
               break;
+            case SMOOTHER_JACOBI:
+              cout << "A Jacobi method is used for smoothing the linear system." << endl;
+              cout << "Relaxation coefficient: "<< Linear_Solver_Relax <<"."<<endl;
+              break;
+            case SMOOTHER_ILU:
+              cout << "A ILU0 method is used for smoothing the linear system." << endl;
+              cout << "Relaxation coefficient: "<< Linear_Solver_Relax <<"."<<endl;
+              break;
+            case SMOOTHER_LUSGS:
+              cout << "A LU-SGS method is used for smoothing the linear system." << endl;
+              cout << "Relaxation coefficient: "<< Linear_Solver_Relax <<"."<<endl;
+              break;
+            case SMOOTHER_LINELET:
+              cout << "A Linelet method is used for smoothing the linear system." << endl;
+              cout << "Relaxation coefficient: "<< Linear_Solver_Relax <<"."<<endl;
+              break;
           }
           break;
       }
@@ -3752,9 +3746,6 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
         case EULER_IMPLICIT:
           cout << "Euler implicit method for the flow equations." << endl;
           switch (Kind_Linear_Solver) {
-            case LU_SGS:
-              cout << "A LU - symmetric Gauss-Seidel iteration is used for solving the linear system." << endl;
-              break;
             case BCGSTAB:
               cout << "BCGSTAB is used for solving the linear system." << endl;
               cout << "Convergence criteria of the linear solver: "<< Linear_Solver_Error <<"."<<endl;
@@ -3828,9 +3819,6 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
       if (MGCycle == 0) cout << "V Multigrid Cycle, with " << nMultiLevel << " multigrid levels."<< endl;
       if (MGCycle == 1) cout << "W Multigrid Cycle, with " << nMultiLevel << " multigrid levels."<< endl;
 
-      cout << "Reduction of the CFL coefficient in the coarse levels: " << MG_CFLRedCoeff <<"."<<endl;
-      cout << "Max. number of children in the agglomeration stage: " << MaxChildren <<"."<<endl;
-      cout << "Max. length of an agglom. elem. (compared with the domain): " << MaxDimension <<"."<<endl;
       cout << "Damping factor for the residual restriction: " << Damp_Res_Restric <<"."<<endl;
       cout << "Damping factor for the correction prolongation: " << Damp_Correc_Prolong <<"."<<endl;
     }
@@ -3850,9 +3838,7 @@ void CConfig::SetOutput(unsigned short val_software, unsigned short val_izone) {
 
       cout << "Courant-Friedrichs-Lewy number:   ";
       cout.precision(3);
-      for (unsigned short iCFL = 0; iCFL < nMultiLevel+1; iCFL++) {
-        cout.width(6); cout << CFL[iCFL];
-      }
+      cout.width(6); cout << CFL[0];
       cout << endl;
 
       if (nMultiLevel !=0) {
@@ -4658,7 +4644,7 @@ unsigned short CConfig::GetMarker_CfgFile_TagBound(string val_marker) {
       return iMarker_Config;
 
   cout <<"The configuration file doesn't have any definition for marker "<< val_marker <<"!!" << endl;
-  exit(1);
+  exit(EXIT_FAILURE);
 }
 
 unsigned short CConfig::GetMarker_CfgFile_KindBC(string val_marker) {
@@ -4870,6 +4856,7 @@ CConfig::~CConfig(void)
 
   if (EA_IntLimit!=NULL)    delete[] EA_IntLimit;
   if (Hold_GridFixed_Coord!=NULL)    delete[] Hold_GridFixed_Coord ;
+  if (Subsonic_Nacelle_Box!=NULL)    delete[] Subsonic_Nacelle_Box ;
   if (DV_Value!=NULL)    delete[] DV_Value;
   if (Design_Variable!=NULL)    delete[] Design_Variable;
   if (Dirichlet_Value!=NULL)    delete[] Dirichlet_Value;
@@ -5017,7 +5004,7 @@ string CConfig::GetUnsteady_FileName(string val_filename, int val_iter) {
   /*--- Check that a positive value iteration is requested (for now). ---*/
   if (val_iter < 0) {
     cout << "Requesting a negative iteration number for the restart file!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   /*--- Append iteration number for unsteady cases ---*/
@@ -5116,39 +5103,30 @@ void CConfig::SetKind_ConvNumScheme(unsigned short val_kind_convnumscheme,
 
 void CConfig::UpdateCFL(unsigned long val_iter) {
   double coeff;
-  bool change;
   unsigned short iCFL;
 
-  if ((val_iter % int(CFLRamp[1]) == 0 ) && (val_iter != 0)) {
-    change = false;
-    for (iCFL = 0; iCFL <= nMultiLevel; iCFL++) {
-      coeff = pow(MG_CFLRedCoeff, double(iCFL));
-      if (Adjoint) coeff = coeff * CFLRedCoeff_AdjFlow;
-
-      if (CFL[iCFL]*CFLRamp[0] < CFLRamp[2]*coeff) {
-        CFL[iCFL] = CFL[iCFL]*CFLRamp[0];
-        change = true;
-      }
-    }
-
-#ifndef HAVE_MPI
-    if (change) {
-      cout <<"\n New value of the CFL number: ";
-      for (iCFL = 0; iCFL < nMultiLevel; iCFL++)
-        cout << CFL[iCFL] <<", ";
-      cout << CFL[nMultiLevel] <<".\n"<< endl;
-    }
-#else
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    if ((change) && (rank == MASTER_NODE)) {
-      cout <<"\n New value of the CFL number: ";
-      for (iCFL = 0; iCFL < nMultiLevel; iCFL++)
-        cout << CFL[iCFL] <<", ";
-      cout << CFL[nMultiLevel] <<".\n"<< endl;
-    }
+  int rank = MASTER_NODE;
+#ifdef HAVE_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 #endif
+  
+  if (Adjoint) coeff = CFLRedCoeff_AdjFlow;
+  else coeff = 1.0;
+
+  if ((CFLRamp[0] != 1.0) && (val_iter % int(CFLRamp[1]) == 0 ) && (val_iter != 0) && (CFL[0] < CFLRamp[2]*coeff)) {
+
+    for (iCFL = 0; iCFL <= nMultiLevel; iCFL++)
+        CFL[iCFL] *= CFLRamp[0];
+
+    if (rank == MASTER_NODE) {
+      cout <<"\n New value of the CFL number: ";
+      for (iCFL = 0; iCFL < nMultiLevel; iCFL++)
+        cout << CFL[iCFL] <<", ";
+      cout << CFL[nMultiLevel] <<".\n"<< endl;
+    }
+
   }
+  
 }
 
 void CConfig::SetGlobalParam(unsigned short val_solver,
@@ -5166,7 +5144,6 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       break;
@@ -5175,7 +5152,6 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Flow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       break;
@@ -5184,21 +5160,18 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Flow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       if (val_system == RUNTIME_TURB_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Turb, Kind_Centered_Turb,
                               Kind_Upwind_Turb, Kind_SlopeLimit_Turb,
                               SpatialOrder_Turb);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Turb);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Turb);
       }
       if (val_system == RUNTIME_TRANS_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Turb, Kind_Centered_Turb,
                               Kind_Upwind_Turb, Kind_SlopeLimit_Turb,
                               SpatialOrder_Turb);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Turb);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Turb);
       }
       break;
@@ -5207,7 +5180,6 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_TNE2, Kind_Centered_TNE2,
                               Kind_Upwind_TNE2, Kind_SlopeLimit_TNE2,
                               SpatialOrder_TNE2);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_TNE2);
       }
       break;
@@ -5216,7 +5188,6 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_TNE2, Kind_Centered_TNE2,
                               Kind_Upwind_TNE2, Kind_SlopeLimit_TNE2,
                               SpatialOrder_TNE2);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_TNE2);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_TNE2);
       }
       break;
@@ -5225,14 +5196,12 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       if (val_system == RUNTIME_ADJFLOW_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjFlow, Kind_Centered_AdjFlow,
                               Kind_Upwind_AdjFlow, Kind_SlopeLimit_AdjFlow,
                               SpatialOrder_AdjFlow);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjFlow);
       }
       break;
@@ -5241,14 +5210,12 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Flow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       if (val_system == RUNTIME_ADJFLOW_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjFlow, Kind_Centered_AdjFlow,
                               Kind_Upwind_AdjFlow, Kind_SlopeLimit_AdjFlow,
                               SpatialOrder_AdjFlow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_AdjFlow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjFlow);
       }
       break;
@@ -5257,28 +5224,24 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Flow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       if (val_system == RUNTIME_ADJFLOW_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjFlow, Kind_Centered_AdjFlow,
                               Kind_Upwind_AdjFlow, Kind_SlopeLimit_AdjFlow,
                               SpatialOrder_AdjFlow);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_AdjFlow);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjFlow);
       }
       if (val_system == RUNTIME_TURB_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Turb, Kind_Centered_Turb,
                               Kind_Upwind_Turb, Kind_SlopeLimit_Turb,
                               SpatialOrder_Turb);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Turb);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Turb);
       }
       if (val_system == RUNTIME_ADJTURB_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjTurb, Kind_Centered_AdjTurb,
                               Kind_Upwind_AdjTurb, Kind_SlopeLimit_AdjTurb,
                               SpatialOrder_AdjTurb);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_AdjTurb);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjTurb);
       }
       break;
@@ -5287,14 +5250,12 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_TNE2, Kind_Centered_TNE2,
                               Kind_Upwind_TNE2, Kind_SlopeLimit_TNE2,
                               SpatialOrder_TNE2);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_TNE2);
       }
       if (val_system == RUNTIME_ADJTNE2_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjTNE2, Kind_Centered_AdjTNE2,
                               Kind_Upwind_AdjTNE2, Kind_SlopeLimit_AdjTNE2,
                               SpatialOrder_AdjTNE2);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjTNE2);
       }
       break;
@@ -5303,14 +5264,12 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_TNE2, Kind_Centered_TNE2,
                               Kind_Upwind_TNE2, Kind_SlopeLimit_TNE2,
                               SpatialOrder_TNE2);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_TNE2);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_TNE2);
       }
       if (val_system == RUNTIME_ADJTNE2_SYS) {
         SetKind_ConvNumScheme(Kind_ConvNumScheme_AdjTNE2, Kind_Centered_AdjTNE2,
                               Kind_Upwind_AdjTNE2, Kind_SlopeLimit_AdjTNE2,
                               SpatialOrder_AdjTNE2);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_AdjTNE2);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_AdjTNE2);
       }
       break;
@@ -5330,28 +5289,24 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
     case POISSON_EQUATION:
       if (val_system == RUNTIME_POISSON_SYS) {
         SetKind_ConvNumScheme(NONE, NONE, NONE, NONE, NONE);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Poisson);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Poisson);
       }
       break;
     case WAVE_EQUATION:
       if (val_system == RUNTIME_WAVE_SYS) {
         SetKind_ConvNumScheme(NONE, NONE, NONE, NONE, NONE);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Wave);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Wave);
       }
       break;
     case HEAT_EQUATION:
       if (val_system == RUNTIME_HEAT_SYS) {
         SetKind_ConvNumScheme(NONE, NONE, NONE, NONE, NONE);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_Heat);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Heat);
       }
       break;
     case LINEAR_ELASTICITY:
       if (val_system == RUNTIME_FEA_SYS) {
         SetKind_ConvNumScheme(NONE, NONE, NONE, NONE, NONE);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_FEA);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_FEA);
       }
       break;
@@ -5360,12 +5315,10 @@ void CConfig::SetGlobalParam(unsigned short val_solver,
         SetKind_ConvNumScheme(Kind_ConvNumScheme_Flow, Kind_Centered_Flow,
                               Kind_Upwind_Flow, Kind_SlopeLimit_Flow,
                               SpatialOrder_Flow);
-        SetKind_ViscNumScheme(NONE);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_Flow);
       }
       if (val_system == RUNTIME_FEA_SYS) {
         SetKind_ConvNumScheme(NONE, NONE, NONE, NONE, NONE);
-        SetKind_ViscNumScheme(Kind_ViscNumScheme_FEA);
         SetKind_TimeIntScheme(Kind_TimeIntScheme_FEA);
       }
       break;
@@ -5605,7 +5558,7 @@ double CConfig::GetIsothermal_Temperature(string val_marker) {
       (nMarker_Isothermal*nMarker_IsothermalNonCatalytic          != 0) ||
       (nMarker_IsothermalCatalytic*nMarker_IsothermalNonCatalytic != 0)   ) {
     cout << "Mixed catalytic boundaries not supported!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   if (nMarker_Isothermal > 0) {
@@ -5633,7 +5586,7 @@ double CConfig::GetWall_HeatFlux(string val_marker) {
       (nMarker_HeatFlux*nMarker_HeatFluxNonCatalytic          != 0) ||
       (nMarker_HeatFluxCatalytic*nMarker_HeatFluxNonCatalytic != 0)) {
     cout << "Mixed catalytic boundaries not supported!!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   if (nMarker_HeatFlux > 0) {

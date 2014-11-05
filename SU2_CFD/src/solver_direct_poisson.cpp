@@ -2,7 +2,7 @@
  * \file solution_direct_poisson.cpp
  * \brief Main subrotuines for solving direct problems (Euler, Navier-Stokes, etc.).
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -43,7 +43,17 @@ CPoissonSolver::CPoissonSolver(CGeometry *geometry, CConfig *config) : CSolver()
   
 	Residual = new double[nVar]; Residual_RMS = new double[nVar];
 	Solution = new double[nVar];
-  Residual_Max = new double[nVar]; Point_Max = new unsigned long[nVar];
+  Residual_Max = new double[nVar];
+  
+  /*--- Define some structures for locating max residuals ---*/
+  
+  Point_Max = new unsigned long[nVar];
+  for (iVar = 0; iVar < nVar; iVar++) Point_Max[iVar] = 0;
+  Point_Max_Coord = new double*[nVar];
+  for (iVar = 0; iVar < nVar; iVar++) {
+    Point_Max_Coord[iVar] = new double[nDim];
+    for (iDim = 0; iDim < nDim; iDim++) Point_Max_Coord[iVar][iDim] = 0.0;
+  }
   
 	/*--- Point to point stiffness matrix ---*/
   
@@ -69,7 +79,7 @@ CPoissonSolver::CPoissonSolver(CGeometry *geometry, CConfig *config) : CSolver()
 	}
   
 	/*--- Initialization of the structure of the whole Jacobian ---*/
-  if (rank == MASTER_NODE) cout << "Initialize jacobian structure (Poisson equation)." << endl;
+  if (rank == MASTER_NODE) cout << "Initialize Jacobian structure (Poisson equation)." << endl;
 	StiffMatrix.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
   
   /*--- Solution and residual vectors ---*/
@@ -347,8 +357,8 @@ void CPoissonSolver::Copy_Zone_Solution(CSolver ***solver1_solution,
  * \brief calculate the element stiffness matrix
  * \author A. Lonkar
  */
-void CPoissonSolver::Galerkin_Method(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
-                                     CConfig *config, unsigned short iMesh) {
+void CPoissonSolver::Viscous_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics,
+                                     CConfig *config, unsigned short iMesh, unsigned short iRKStep) {
   
 	unsigned long iElem, Point_0 = 0, Point_1 = 0, Point_2 = 0, Point_3 = 0;
 	double *Coord_0 = NULL, *Coord_1= NULL, *Coord_2= NULL, *Coord_3 = NULL;
@@ -450,10 +460,11 @@ void CPoissonSolver::BC_Neumann(CGeometry *geometry, CSolver **solver_container,
 
 void CPoissonSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_container, CConfig *config) {
   
-	unsigned long iPoint, total_index;
+	unsigned long iPoint, total_index, IterLinSol;
   unsigned short iVar;
 	
 	/*--- Build implicit system ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
     
 		/*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
@@ -465,6 +476,7 @@ void CPoissonSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solv
 	}
   
   /*--- Initialize residual and solution at the ghost points ---*/
+  
   for (iPoint = geometry->GetnPointDomain(); iPoint < geometry->GetnPoint(); iPoint++) {
     for (iVar = 0; iVar < nVar; iVar++) {
       total_index = iPoint*nVar + iVar;
@@ -473,37 +485,13 @@ void CPoissonSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solv
     }
   }
 	
-	/*--- Solve the linear system (Krylov subspace methods) ---*/
-  CMatrixVectorProduct* mat_vec = new CSysMatrixVectorProduct(StiffMatrix, geometry, config);
-  
-  CPreconditioner* precond = NULL;
-  if (config->GetKind_Linear_Solver_Prec() == JACOBI) {
-    StiffMatrix.BuildJacobiPreconditioner();
-    precond = new CJacobiPreconditioner(StiffMatrix, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == ILU) {
-    StiffMatrix.BuildILUPreconditioner();
-    precond = new CILUPreconditioner(StiffMatrix, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LU_SGS) {
-    precond = new CLU_SGSPreconditioner(StiffMatrix, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LINELET) {
-    StiffMatrix.BuildJacobiPreconditioner();
-    precond = new CLineletPreconditioner(StiffMatrix, geometry, config);
-  }
+  /*--- Solve or smooth the linear system ---*/
   
   CSysSolve system;
-  
-  if (config->GetKind_Linear_Solver() == BCGSTAB)
-    system.BCGSTAB(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(), config->GetLinear_Solver_Iter(), true);
-  else if (config->GetKind_Linear_Solver() == FGMRES)
-    system.FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(), config->GetLinear_Solver_Iter(), true);
-  
-  delete mat_vec;
-  delete precond;
+  IterLinSol = system.Solve(StiffMatrix, LinSysRes, LinSysSol, geometry, config);
   
 	/*--- Update solution (system written in terms of increments) ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
 		for (iVar = 0; iVar < nVar; iVar++) {
 			node[iPoint]->SetSolution(iVar, LinSysSol[iPoint*nVar+iVar]);
@@ -511,27 +499,32 @@ void CPoissonSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solv
 	}
   
   /*--- MPI solution ---*/
+  
   Set_MPI_Solution(geometry, config);
   
   /*---  Compute the residual Ax-f ---*/
+  
 	StiffMatrix.ComputeResidual(LinSysSol, LinSysRes, LinSysAux);
   
   /*--- Set maximum residual to zero ---*/
+  
 	for (iVar = 0; iVar < nVar; iVar++) {
 		SetRes_RMS(iVar, 0.0);
     SetRes_Max(iVar, 0.0, 0);
   }
   
   /*--- Compute the residual ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
 		for (iVar = 0; iVar < nVar; iVar++) {
 			total_index = iPoint*nVar+iVar;
 			AddRes_RMS(iVar, LinSysAux[total_index]*LinSysAux[total_index]);
-      AddRes_Max(iVar, fabs(LinSysAux[total_index]), geometry->node[iPoint]->GetGlobalIndex());
+      AddRes_Max(iVar, fabs(LinSysAux[total_index]), geometry->node[iPoint]->GetGlobalIndex(), geometry->node[iPoint]->GetCoord());
 		}
 	}
   
   /*--- Compute the root mean square residual ---*/
+  
   SetResidual_RMS(geometry, config);
   
 }

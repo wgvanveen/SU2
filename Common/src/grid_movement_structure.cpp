@@ -2,7 +2,7 @@
  * \file grid_movement_structure.cpp
  * \brief Subroutines for doing the grid movement using different strategies.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -119,6 +119,7 @@ void CVolumetricMovement::SetVolume_Deformation(CGeometry *geometry, CConfig *co
   
   /*--- Initialize matrix, solution, and r.h.s. structures for the linear solver. ---*/
   
+  config->SetKind_Linear_Solver_Prec(LU_SGS);
   LinSysSol.Initialize(nPoint, nPointDomain, nVar, 0.0);
   LinSysRes.Initialize(nPoint, nPointDomain, nVar, 0.0);
   StiffMatrix.Initialize(nPoint, nPointDomain, nVar, nVar, false, geometry, config);
@@ -169,25 +170,7 @@ void CVolumetricMovement::SetVolume_Deformation(CGeometry *geometry, CConfig *co
     CSysSolve *system             = new CSysSolve();
     
     /*--- Solve the linear system ---*/
-    if (config->GetKind_Linear_Solver() == RFGMRES){
-      unsigned long iterations = config ->GetLinear_Solver_Restart_Frequency();
-      double tol = NumError;
-      IterLinSol=0;
-      while (IterLinSol < Smoothing_Iter){
-            if (IterLinSol + config->GetLinear_Solver_Restart_Frequency() > Smoothing_Iter)
-              iterations = Smoothing_Iter-IterLinSol;
-            IterLinSol += system->FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, tol,
-                               iterations, Screen_Output); // increment total iterations
-            if (LinSysRes.norm()<tol)
-              break;
-            tol = tol*(1.0/LinSysRes.norm()); // Increase tolerance to reflect that we are now solving relative to an intermediate residual.
-      }
-    }
-    else
-      IterLinSol = system->FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, NumError, Smoothing_Iter, Screen_Output);
-
-
-    
+    IterLinSol = system->FGMRES_LinSolver(LinSysRes, LinSysSol, *mat_vec, *precond, NumError, Smoothing_Iter, Screen_Output);
 
     /*--- Deallocate memory needed by the Krylov linear solver ---*/
     
@@ -206,11 +189,11 @@ void CVolumetricMovement::SetVolume_Deformation(CGeometry *geometry, CConfig *co
     
     MinVolume = Check_Grid(geometry);
     
-    if ((rank == MASTER_NODE) && Screen_Output) {
+    if (rank == MASTER_NODE) {
       cout << "Non-linear iter.: " << iNonlinear_Iter+1 << "/" << config->GetGridDef_Nonlinear_Iter()
-      << ". Linear iteration: " << IterLinSol << "." << endl;
-      if (nDim == 2) cout << "Minimum area: " << MinVolume << ". Error: " << NumError << "." <<endl;
-      else cout << "Minimum volume: " << MinVolume << ". Error: " << NumError << "." <<endl;
+      << ". Linear iter.: " << IterLinSol << ". ";
+      if (nDim == 2) cout << "Min. area: " << MinVolume << ". Error: " << NumError << "." <<endl;
+      else cout << "Min. volume: " << MinVolume << ". Error: " << NumError << "." <<endl;
     }
     
   }
@@ -602,14 +585,14 @@ double CVolumetricMovement::ShapeFunc_Triangle(double Xi, double Eta, double Coo
     }
   }
   
-  /*--- Adjoint to jacobian ---*/
+  /*--- Adjoint to Jacobian ---*/
   
   ad[0][0] = xs[1][1];
   ad[0][1] = -xs[0][1];
   ad[1][0] = -xs[1][0];
   ad[1][1] = xs[0][0];
   
-  /*--- Determinant of jacobian ---*/
+  /*--- Determinant of Jacobian ---*/
   
   xsj = ad[0][0]*ad[1][1]-ad[0][1]*ad[1][0];
   
@@ -665,14 +648,14 @@ double CVolumetricMovement::ShapeFunc_Rectangle(double Xi, double Eta, double Co
     }
   }
   
-  /*--- Adjoint to jacobian ---*/
+  /*--- Adjoint to Jacobian ---*/
   
   ad[0][0] = xs[1][1];
   ad[0][1] = -xs[0][1];
   ad[1][0] = -xs[1][0];
   ad[1][1] = xs[0][0];
   
-  /*--- Determinant of jacobian ---*/
+  /*--- Determinant of Jacobian ---*/
   
   xsj = ad[0][0]*ad[1][1]-ad[0][1]*ad[1][0];
   
@@ -691,80 +674,6 @@ double CVolumetricMovement::ShapeFunc_Rectangle(double Xi, double Eta, double Co
     c1 = xs[1][0]*DShapeFunction[k][0]+xs[1][1]*DShapeFunction[k][1]; // dN/dy
     DShapeFunction[k][0] = c0; // store dN/dx instead of dN/d xi
     DShapeFunction[k][1] = c1; // store dN/dy instead of dN/d eta
-  }
-  
-  return xsj;
-  
-}
-
-double CVolumetricMovement::ShapeFunc_Hexa(double Xi, double Eta, double Mu, double CoordCorners[8][3], double DShapeFunction[8][4]) {
-  
-  int i, j, k;
-  double a0, a1, a2, c0, c1, c2, xsj;
-  double ss[3], xs[3][3], ad[3][3];
-  double s0[8] = {-0.5, 0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5};
-  double s1[8] = {-0.5,-0.5, 0.5, 0.5,-0.5,-0.5,0.5, 0.5};
-  double s2[8] = {-0.5,-0.5,-0.5,-0.5, 0.5, 0.5,0.5, 0.5};
-  
-  ss[0] = Xi;
-  ss[1] = Eta;
-  ss[2] = Mu;
-
-  /*--- Shape functions ---*/
-  
-  for (i = 0; i < 8; i++) {
-    a0 = 0.5+s0[i]*ss[0]; // shape function in xi-direction
-    a1 = 0.5+s1[i]*ss[1]; // shape function in eta-direction
-    a2 = 0.5+s2[i]*ss[2]; // shape function in mu-direction
-    DShapeFunction[i][0] = s0[i]*a1*a2; // dN/d xi
-    DShapeFunction[i][1] = s1[i]*a0*a2; // dN/d eta
-    DShapeFunction[i][2] = s2[i]*a0*a1; // dN/d mu
-    DShapeFunction[i][3] = a0*a1*a2; // actual shape function N
-  }
-  
-  /*--- Jacobian transformation ---*/
-   
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < 3; j++) {
-      xs[i][j] = 0.0;
-      for (k = 0; k < 8; k++) {
-        xs[i][j] = xs[i][j]+CoordCorners[k][j]*DShapeFunction[k][i];
-      }
-    }
-  }
-  
-  /*--- Adjoint to jacobian ---*/
-  
-  ad[0][0] = xs[1][1]*xs[2][2]-xs[1][2]*xs[2][1];
-  ad[0][1] = xs[0][2]*xs[2][1]-xs[0][1]*xs[2][2];
-  ad[0][2] = xs[0][1]*xs[1][2]-xs[0][2]*xs[1][1];
-  ad[1][0] = xs[1][2]*xs[2][0]-xs[1][0]*xs[2][2];
-  ad[1][1] = xs[0][0]*xs[2][2]-xs[0][2]*xs[2][0];
-  ad[1][2] = xs[0][2]*xs[1][0]-xs[0][0]*xs[1][2];
-  ad[2][0] = xs[1][0]*xs[2][1]-xs[1][1]*xs[2][0];
-  ad[2][1] = xs[0][1]*xs[2][0]-xs[0][0]*xs[2][1];
-  ad[2][2] = xs[0][0]*xs[1][1]-xs[0][1]*xs[1][0];
-  
-  /*--- Determinant of jacobian ---*/
-  
-  xsj = xs[0][0]*ad[0][0]+xs[0][1]*ad[1][0]+xs[0][2]*ad[2][0];
-  
-  /*--- Jacobian inverse ---*/
-  for (i = 0; i < 3; i++) {
-    for (j = 0; j < 3; j++) {
-      xs[i][j] = ad[i][j]/xsj;
-    }
-  }
-  
-  /*--- Derivatives with repect to global coordinates ---*/
-  
-  for (k = 0; k < 8; k++) {
-    c0 = xs[0][0]*DShapeFunction[k][0]+xs[0][1]*DShapeFunction[k][1]+xs[0][2]*DShapeFunction[k][2]; // dN/dx
-    c1 = xs[1][0]*DShapeFunction[k][0]+xs[1][1]*DShapeFunction[k][1]+xs[1][2]*DShapeFunction[k][2]; // dN/dy
-    c2 = xs[2][0]*DShapeFunction[k][0]+xs[2][1]*DShapeFunction[k][1]+xs[2][2]*DShapeFunction[k][2]; // dN/dz
-    DShapeFunction[k][0] = c0; // store dN/dx instead of dN/d xi
-    DShapeFunction[k][1] = c1; // store dN/dy instead of dN/d eta
-    DShapeFunction[k][2] = c2; // store dN/dz instead of dN/d mu
   }
   
   return xsj;
@@ -802,7 +711,7 @@ double CVolumetricMovement::ShapeFunc_Tetra(double Xi, double Eta, double Mu, do
     }
   }
   
-  /*--- Adjoint to jacobian ---*/
+  /*--- Adjoint to Jacobian ---*/
   
   ad[0][0] = xs[1][1]*xs[2][2]-xs[1][2]*xs[2][1];
   ad[0][1] = xs[0][2]*xs[2][1]-xs[0][1]*xs[2][2];
@@ -814,7 +723,7 @@ double CVolumetricMovement::ShapeFunc_Tetra(double Xi, double Eta, double Mu, do
   ad[2][1] = xs[0][1]*xs[2][0]-xs[0][0]*xs[2][1];
   ad[2][2] = xs[0][0]*xs[1][1]-xs[0][1]*xs[1][0];
   
-  /*--- Determinant of jacobian ---*/
+  /*--- Determinant of Jacobian ---*/
   
   xsj = xs[0][0]*ad[0][0]+xs[0][1]*ad[1][0]+xs[0][2]*ad[2][0];
   
@@ -848,6 +757,7 @@ double CVolumetricMovement::ShapeFunc_Pyram(double Xi, double Eta, double Mu, do
   double xs[3][3], ad[3][3];
   
   /*--- Shape functions ---*/
+  
   double Den = 4.0*(1.0 - Mu);
   
   DShapeFunction[0][3] = (-Xi+Eta+Mu-1.0)*(-Xi-Eta+Mu-1.0)/Den;
@@ -889,7 +799,7 @@ double CVolumetricMovement::ShapeFunc_Pyram(double Xi, double Eta, double Mu, do
     }
   }
   
-  /*--- Adjoint to jacobian ---*/
+  /*--- Adjoint to Jacobian ---*/
   
   ad[0][0] = xs[1][1]*xs[2][2]-xs[1][2]*xs[2][1];
   ad[0][1] = xs[0][2]*xs[2][1]-xs[0][1]*xs[2][2];
@@ -901,7 +811,7 @@ double CVolumetricMovement::ShapeFunc_Pyram(double Xi, double Eta, double Mu, do
   ad[2][1] = xs[0][1]*xs[2][0]-xs[0][0]*xs[2][1];
   ad[2][2] = xs[0][0]*xs[1][1]-xs[0][1]*xs[1][0];
   
-  /*--- Determinant of jacobian ---*/
+  /*--- Determinant of Jacobian ---*/
   
   xsj = xs[0][0]*ad[0][0]+xs[0][1]*ad[1][0]+xs[0][2]*ad[2][0];
   
@@ -963,7 +873,7 @@ double CVolumetricMovement::ShapeFunc_Wedge(double Xi, double Eta, double Mu, do
     }
   }
   
-  /*--- Adjoint to jacobian ---*/
+  /*--- Adjoint to Jacobian ---*/
   
   ad[0][0] = xs[1][1]*xs[2][2]-xs[1][2]*xs[2][1];
   ad[0][1] = xs[0][2]*xs[2][1]-xs[0][1]*xs[2][2];
@@ -975,7 +885,7 @@ double CVolumetricMovement::ShapeFunc_Wedge(double Xi, double Eta, double Mu, do
   ad[2][1] = xs[0][1]*xs[2][0]-xs[0][0]*xs[2][1];
   ad[2][2] = xs[0][0]*xs[1][1]-xs[0][1]*xs[1][0];
   
-  /*--- Determinant of jacobian ---*/
+  /*--- Determinant of Jacobian ---*/
   
   xsj = xs[0][0]*ad[0][0]+xs[0][1]*ad[1][0]+xs[0][2]*ad[2][0];
   
@@ -990,6 +900,80 @@ double CVolumetricMovement::ShapeFunc_Wedge(double Xi, double Eta, double Mu, do
   /*--- Derivatives with repect to global coordinates ---*/
   
   for (k = 0; k < 6; k++) {
+    c0 = xs[0][0]*DShapeFunction[k][0]+xs[0][1]*DShapeFunction[k][1]+xs[0][2]*DShapeFunction[k][2]; // dN/dx
+    c1 = xs[1][0]*DShapeFunction[k][0]+xs[1][1]*DShapeFunction[k][1]+xs[1][2]*DShapeFunction[k][2]; // dN/dy
+    c2 = xs[2][0]*DShapeFunction[k][0]+xs[2][1]*DShapeFunction[k][1]+xs[2][2]*DShapeFunction[k][2]; // dN/dz
+    DShapeFunction[k][0] = c0; // store dN/dx instead of dN/d xi
+    DShapeFunction[k][1] = c1; // store dN/dy instead of dN/d eta
+    DShapeFunction[k][2] = c2; // store dN/dz instead of dN/d mu
+  }
+  
+  return xsj;
+  
+}
+
+double CVolumetricMovement::ShapeFunc_Hexa(double Xi, double Eta, double Mu, double CoordCorners[8][3], double DShapeFunction[8][4]) {
+  
+  int i, j, k;
+  double a0, a1, a2, c0, c1, c2, xsj;
+  double ss[3], xs[3][3], ad[3][3];
+  double s0[8] = {-0.5, 0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5};
+  double s1[8] = {-0.5,-0.5, 0.5, 0.5,-0.5,-0.5,0.5, 0.5};
+  double s2[8] = {-0.5,-0.5,-0.5,-0.5, 0.5, 0.5,0.5, 0.5};
+  
+  ss[0] = Xi;
+  ss[1] = Eta;
+  ss[2] = Mu;
+  
+  /*--- Shape functions ---*/
+  
+  for (i = 0; i < 8; i++) {
+    a0 = 0.5+s0[i]*ss[0]; // shape function in xi-direction
+    a1 = 0.5+s1[i]*ss[1]; // shape function in eta-direction
+    a2 = 0.5+s2[i]*ss[2]; // shape function in mu-direction
+    DShapeFunction[i][0] = s0[i]*a1*a2; // dN/d xi
+    DShapeFunction[i][1] = s1[i]*a0*a2; // dN/d eta
+    DShapeFunction[i][2] = s2[i]*a0*a1; // dN/d mu
+    DShapeFunction[i][3] = a0*a1*a2; // actual shape function N
+  }
+  
+  /*--- Jacobian transformation ---*/
+  
+  for (i = 0; i < 3; i++) {
+    for (j = 0; j < 3; j++) {
+      xs[i][j] = 0.0;
+      for (k = 0; k < 8; k++) {
+        xs[i][j] = xs[i][j]+CoordCorners[k][j]*DShapeFunction[k][i];
+      }
+    }
+  }
+  
+  /*--- Adjoint to Jacobian ---*/
+  
+  ad[0][0] = xs[1][1]*xs[2][2]-xs[1][2]*xs[2][1];
+  ad[0][1] = xs[0][2]*xs[2][1]-xs[0][1]*xs[2][2];
+  ad[0][2] = xs[0][1]*xs[1][2]-xs[0][2]*xs[1][1];
+  ad[1][0] = xs[1][2]*xs[2][0]-xs[1][0]*xs[2][2];
+  ad[1][1] = xs[0][0]*xs[2][2]-xs[0][2]*xs[2][0];
+  ad[1][2] = xs[0][2]*xs[1][0]-xs[0][0]*xs[1][2];
+  ad[2][0] = xs[1][0]*xs[2][1]-xs[1][1]*xs[2][0];
+  ad[2][1] = xs[0][1]*xs[2][0]-xs[0][0]*xs[2][1];
+  ad[2][2] = xs[0][0]*xs[1][1]-xs[0][1]*xs[1][0];
+  
+  /*--- Determinant of Jacobian ---*/
+  
+  xsj = xs[0][0]*ad[0][0]+xs[0][1]*ad[1][0]+xs[0][2]*ad[2][0];
+  
+  /*--- Jacobian inverse ---*/
+  for (i = 0; i < 3; i++) {
+    for (j = 0; j < 3; j++) {
+      xs[i][j] = ad[i][j]/xsj;
+    }
+  }
+  
+  /*--- Derivatives with repect to global coordinates ---*/
+  
+  for (k = 0; k < 8; k++) {
     c0 = xs[0][0]*DShapeFunction[k][0]+xs[0][1]*DShapeFunction[k][1]+xs[0][2]*DShapeFunction[k][2]; // dN/dx
     c1 = xs[1][0]*DShapeFunction[k][0]+xs[1][1]*DShapeFunction[k][1]+xs[1][2]*DShapeFunction[k][2]; // dN/dy
     c2 = xs[2][0]*DShapeFunction[k][0]+xs[2][1]*DShapeFunction[k][1]+xs[2][2]*DShapeFunction[k][2]; // dN/dz
@@ -1133,8 +1117,8 @@ double CVolumetricMovement::GetWedge_Volume(double CoordCorners[8][3]) {
   double r1[3], r2[3], r3[3], CrossProduct[3], Volume;
   
   Coord_0 = CoordCorners[0];
-  Coord_1 = CoordCorners[1];
-  Coord_2 = CoordCorners[2];
+  Coord_1 = CoordCorners[2];
+  Coord_2 = CoordCorners[1];
   Coord_3 = CoordCorners[5];
   
   for (iDim = 0; iDim < nDim; iDim++) {
@@ -1146,12 +1130,12 @@ double CVolumetricMovement::GetWedge_Volume(double CoordCorners[8][3]) {
 	CrossProduct[0] = (r1[1]*r2[2] - r1[2]*r2[1])*r3[0];
 	CrossProduct[1] = (r1[2]*r2[0] - r1[0]*r2[2])*r3[1];
 	CrossProduct[2] = (r1[0]*r2[1] - r1[1]*r2[0])*r3[2];
-  
+    
   Volume = (CrossProduct[0] + CrossProduct[1] + CrossProduct[2])/6.0;
   
   Coord_0 = CoordCorners[0];
-  Coord_1 = CoordCorners[1];
-  Coord_2 = CoordCorners[5];
+  Coord_1 = CoordCorners[5];
+  Coord_2 = CoordCorners[1];
   Coord_3 = CoordCorners[4];
   
   for (iDim = 0; iDim < nDim; iDim++) {
@@ -1167,8 +1151,8 @@ double CVolumetricMovement::GetWedge_Volume(double CoordCorners[8][3]) {
   Volume += (CrossProduct[0] + CrossProduct[1] + CrossProduct[2])/6.0;
   
   Coord_0 = CoordCorners[0];
-  Coord_1 = CoordCorners[4];
-  Coord_2 = CoordCorners[5];
+  Coord_1 = CoordCorners[5];
+  Coord_2 = CoordCorners[4];
   Coord_3 = CoordCorners[3];
   
   for (iDim = 0; iDim < nDim; iDim++) {
@@ -1723,6 +1707,7 @@ void CVolumetricMovement::SetDomainDisplacements(CGeometry *geometry, CConfig *c
 
 	/*--- Set to zero displacements of all the points that are not going to be moved
 	 except the surfaces ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPoint(); iPoint++) {
 		Coord = geometry->node[iPoint]->GetCoord();
 		for (iDim = 0; iDim < nDim; iDim++) {
@@ -1734,6 +1719,7 @@ void CVolumetricMovement::SetDomainDisplacements(CGeometry *geometry, CConfig *c
 			}
 		}
 	}
+  
 }
 
 void CVolumetricMovement::Rigid_Rotation(CGeometry *geometry, CConfig *config,
@@ -2407,7 +2393,7 @@ void CSurfaceMovement::SetSurface_Deformation(CGeometry *geometry, CConfig *conf
     else {
       
       cout << "There are not FFD boxes in the mesh file!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
       
     }
     
@@ -2424,7 +2410,7 @@ void CSurfaceMovement::SetSurface_Deformation(CGeometry *geometry, CConfig *conf
            (config->GetDesign_Variable(0) == FFD_ROTATION) ||
            (config->GetDesign_Variable(0) == FFD_CONTROL_SURFACE) ||
            (config->GetDesign_Variable(0) == FFD_CAMBER) ||
-           (config->GetDesign_Variable(0) == FFD_THICKNESS) ) {
+           (config->GetDesign_Variable(0) == FFD_THICKNESS)) {
     
     /*--- Definition of the FFD deformation class ---*/
     
@@ -2444,7 +2430,7 @@ void CSurfaceMovement::SetSurface_Deformation(CGeometry *geometry, CConfig *conf
         
         cout << endl << "There is not FFD box definition in the mesh file," << endl;
         cout << "run DV_KIND=FFD_SETTING first !!" << endl;
-        exit(1);
+        exit(EXIT_FAILURE);
         
       }
       
@@ -2545,7 +2531,7 @@ void CSurfaceMovement::SetSurface_Deformation(CGeometry *geometry, CConfig *conf
     else {
       
       cout << "There are not FFD boxes in the mesh file!!" << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
       
     }
     
@@ -2738,7 +2724,7 @@ void CSurfaceMovement::SetParametricCoord(CGeometry *geometry, CConfig *config, 
           
 					/*--- Find the parametric coordinate ---*/
           
-					ParamCoord = FFDBox->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config->GetFFD_Tol(), config->GetnFFD_Iter());
+					ParamCoord = FFDBox->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config);
           
 					/*--- If the parametric coordinates are in (0,1) the point belongs to the FFDBox ---*/
           
@@ -2770,6 +2756,11 @@ void CSurfaceMovement::SetParametricCoord(CGeometry *geometry, CConfig *config, 
 						ParamCoordGuess[0] = ParamCoord[0]; ParamCoordGuess[1] = ParamCoord[1]; ParamCoordGuess[2] = ParamCoord[2];
             
 					}
+          else {
+            cout << "Please check this point: (" << ParamCoord[0] <<" "<< ParamCoord[1] <<" "<< ParamCoord[2] <<") <-> ("
+            << CartCoord[0] <<" "<< CartCoord[1] <<" "<< CartCoord[2] <<")."<< endl;
+          }
+          
 				}
 			}
     }
@@ -2806,7 +2797,7 @@ void CSurfaceMovement::SetParametricCoordCP(CGeometry *geometry, CConfig *config
 		for (jOrder = 0; jOrder < FFDBoxChild->GetmOrder(); jOrder++)
 			for (kOrder = 0; kOrder < FFDBoxChild->GetnOrder(); kOrder++) {
 				CartCoord = FFDBoxChild->GetCoordControlPoints(iOrder, jOrder, kOrder);
-				ParamCoord = FFDBoxParent->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config->GetFFD_Tol(), config->GetnFFD_Iter());
+				ParamCoord = FFDBoxParent->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config);
 				FFDBoxChild->SetParCoordControlPoints(ParamCoord, iOrder, jOrder, kOrder);
 			}
 
@@ -2895,7 +2886,7 @@ void CSurfaceMovement::UpdateParametricCoord(CGeometry *geometry, CConfig *confi
 			/*--- Find the parametric coordinate using as ParamCoordGuess the previous value ---*/
       
 			ParamCoordGuess[0] = ParamCoord[0]; ParamCoordGuess[1] = ParamCoord[1]; ParamCoordGuess[2] = ParamCoord[2];
-			ParamCoord = FFDBox->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config->GetFFD_Tol(), config->GetnFFD_Iter());
+			ParamCoord = FFDBox->GetParametricCoord_Iterative(CartCoord, ParamCoordGuess, config);
 					
 			/*--- Set the new value of the parametric coordinates ---*/
       
@@ -3053,7 +3044,7 @@ void CSurfaceMovement::SetFFDCPChange(CGeometry *geometry, CConfig *config, CFre
 																			unsigned short iDV, bool ResetDef) {
 	
 	double movement[3], Ampl;
-	unsigned short index[3];
+	unsigned short index[3], i, j, k;
 	string design_FFDBox;
   
 	design_FFDBox = config->GetFFDTag(iDV);
@@ -3067,16 +3058,83 @@ void CSurfaceMovement::SetFFDCPChange(CGeometry *geometry, CConfig *config, CFre
     /*--- Compute deformation ---*/
     
 		Ampl = config->GetDV_Value(iDV);
-		
-		index[0] = int(config->GetParamDV(iDV, 1));
-		index[1] = int(config->GetParamDV(iDV, 2));
-		index[2] = int(config->GetParamDV(iDV, 3));
-		
-		movement[0] = config->GetParamDV(iDV, 4)*Ampl;
+
+    movement[0] = config->GetParamDV(iDV, 4)*Ampl;
 		movement[1] = config->GetParamDV(iDV, 5)*Ampl;
 		movement[2] = config->GetParamDV(iDV, 6)*Ampl;
-		
-		FFDBox->SetControlPoints(index, movement);
+
+    index[0] = int(config->GetParamDV(iDV, 1));
+    index[1] = int(config->GetParamDV(iDV, 2));
+    index[2] = int(config->GetParamDV(iDV, 3));
+
+    if ((int(config->GetParamDV(iDV, 1)) == -1) &&
+        (int(config->GetParamDV(iDV, 2)) != -1) &&
+        (int(config->GetParamDV(iDV, 3)) != -1)) {
+      for (i = 0; i < FFDBox->GetlOrder(); i++) {
+        index[0] = i;
+        FFDBox->SetControlPoints(index, movement);
+      }
+    }
+
+    if ((int(config->GetParamDV(iDV, 1)) != -1) &&
+        (int(config->GetParamDV(iDV, 2)) == -1) &&
+        (int(config->GetParamDV(iDV, 3)) != -1)) {
+      for (j = 0; j < FFDBox->GetmOrder(); j++) {
+        index[1] = j;
+        FFDBox->SetControlPoints(index, movement);
+      }
+    }
+    
+    if ((int(config->GetParamDV(iDV, 1)) != -1) &&
+        (int(config->GetParamDV(iDV, 2)) != -1) &&
+        (int(config->GetParamDV(iDV, 3)) == -1)) {
+      for (k = 0; k < FFDBox->GetnOrder(); k++) {
+        index[2] = k;
+        FFDBox->SetControlPoints(index, movement);
+      }
+    }
+    
+    if ((int(config->GetParamDV(iDV, 1)) == -1) &&
+        (int(config->GetParamDV(iDV, 2)) == -1) &&
+        (int(config->GetParamDV(iDV, 3)) != -1)) {
+      for (i = 0; i < FFDBox->GetlOrder(); i++) {
+        index[0] = i;
+        for (j = 0; j < FFDBox->GetmOrder(); j++) {
+          index[1] = j;
+          FFDBox->SetControlPoints(index, movement);
+        }
+      }
+    }
+    
+    if ((int(config->GetParamDV(iDV, 1)) != -1) &&
+        (int(config->GetParamDV(iDV, 2)) == -1) &&
+        (int(config->GetParamDV(iDV, 3)) == -1)) {
+      for (j = 0; j < FFDBox->GetmOrder(); j++) {
+        index[1] = j;
+        for (k = 0; k < FFDBox->GetnOrder(); k++) {
+          index[2] = k;
+          FFDBox->SetControlPoints(index, movement);
+        }
+      }
+    }
+    
+    if ((int(config->GetParamDV(iDV, 1)) == -1) &&
+        (int(config->GetParamDV(iDV, 2)) != -1) &&
+        (int(config->GetParamDV(iDV, 3)) == -1)) {
+      for (i = 0; i < FFDBox->GetlOrder(); i++) {
+        index[0] = i;
+        for (k = 0; k < FFDBox->GetnOrder(); k++) {
+          index[2] = k;
+          FFDBox->SetControlPoints(index, movement);
+        }
+      }
+    }
+    
+    if ((int(config->GetParamDV(iDV, 1)) != -1) &&
+        (int(config->GetParamDV(iDV, 2)) != -1) &&
+        (int(config->GetParamDV(iDV, 3)) != -1)) {
+      FFDBox->SetControlPoints(index, movement);
+    }
 		
 	}
   
@@ -3301,11 +3359,11 @@ void CSurfaceMovement::SetFFDTwistAngle(CGeometry *geometry, CConfig *config, CF
 					x = coord[0]; y = coord[1]; z = coord[2];
 					
 					double factor = 0.0; 
-					if ( z < config->GetParamDV(iDV, 3) )
+					if ( y < config->GetParamDV(iDV, 2) )
 						factor = 0.0;
-					if (( z >= config->GetParamDV(iDV, 3)) && ( z <= config->GetParamDV(iDV, 6)) )
-						factor = (z-config->GetParamDV(iDV, 3)) / (config->GetParamDV(iDV, 6)-config->GetParamDV(iDV, 3));
-					if ( z > config->GetParamDV(iDV, 6) )
+					if (( y >= config->GetParamDV(iDV, 2)) && ( y <= config->GetParamDV(iDV, 5)) )
+						factor = (y-config->GetParamDV(iDV, 2)) / (config->GetParamDV(iDV, 5)-config->GetParamDV(iDV, 2));
+					if ( y > config->GetParamDV(iDV, 5) )
 						factor = 1.0;
 					
 					cosT = cos(theta*factor); 
@@ -4943,7 +5001,7 @@ void CSurfaceMovement::SetExternal_Deformation(CGeometry *geometry, CConfig *con
   /*--- Throw error if there is no file ---*/
   if (motion_file.fail()) {
     cout << "There is no mesh motion file!" << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   
   /*--- Read in and store the new mesh node locations ---*/ 
@@ -5215,7 +5273,7 @@ void CSurfaceMovement::SetAirfoil(CGeometry *boundary, CConfig *config) {
   airfoil_file.open(AirfoilFile, ios::in);
   if (airfoil_file.fail()) {
     cout << "There is no airfoil file!! "<< endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   cout << "Enter the format of the airfoil (Selig or Lednicer): ";
   scanf ("%s", AirfoilFormat);
@@ -5446,7 +5504,7 @@ void CSurfaceMovement::ReadFFDInfo(CGeometry *geometry, CConfig *config, CFreeFo
 	mesh_file.open(cstr, ios::in);
 	if (mesh_file.fail()) {
 		cout << "There is no geometry file (ReadFFDInfo)!!" << endl;
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 	
 	while (getline (mesh_file, text_line)) {
@@ -5706,18 +5764,26 @@ void CSurfaceMovement::ReadFFDInfo(CGeometry *geometry, CConfig *config, CFreeFo
           
 				}
         
+#ifdef HAVE_MPI
+        if (config->GetKind_SU2() == SU2_PRT)
+          if (rank == MASTER_NODE) cout << "Surface points: " << nSurfacePoints[iFFDBox] <<"."<<endl;
+#endif
+        
         nSurfacePoints[iFFDBox] = my_nSurfPoints;
         nSurfPoints = 0;
+        
 #ifdef HAVE_MPI
-        if (config->GetKind_SU2() != SU2_PRT)
+        if (config->GetKind_SU2() != SU2_PRT) {
           MPI_Allreduce(&my_nSurfPoints, &nSurfPoints, 1, MPI_UNSIGNED_LONG, MPI_SUM, MPI_COMM_WORLD);
-        else
-          nSurfPoints = my_nSurfPoints;
+          if (rank == MASTER_NODE) cout << "Surface points: " << nSurfPoints <<"."<<endl;
+        }
+        else nSurfPoints = my_nSurfPoints;
 #else
 				nSurfPoints = my_nSurfPoints;
+        if (rank == MASTER_NODE) cout << "Surface points: " << nSurfPoints <<"."<<endl;
 #endif
 				
-				if (rank == MASTER_NODE) cout << "Surface points: " << nSurfPoints <<"."<<endl;
+				
         
 			}
 			
@@ -6351,12 +6417,15 @@ void CFreeFormDefBox::GetFFDHessian(double *uvw, double *xyz, double **val_Hessi
   
 }
 
-double *CFreeFormDefBox::GetParametricCoord_Iterative(double *xyz, double *ParamCoordGuess, double tol,
-																										 unsigned long it_max) {
+double *CFreeFormDefBox::GetParametricCoord_Iterative(double *xyz, double *ParamCoordGuess, CConfig *config) {
   
 	double IndepTerm[3], SOR_Factor = 1.0, MinNormError, NormError, Determinant, AdjHessian[3][3], Temp[3];
 	unsigned short iDim, jDim, RandonCounter;
 	unsigned long iter;
+  
+  double tol = config->GetFFD_Tol();
+  unsigned short it_max = config->GetnFFD_Iter();
+  unsigned short Random_Trials = 500;
   
 	/*--- Allocate the Hessian ---*/
   
@@ -6371,7 +6440,7 @@ double *CFreeFormDefBox::GetParametricCoord_Iterative(double *xyz, double *Param
 	
   /*--- External iteration ---*/
 
-	for (iter = 0; iter < it_max; iter++) {
+	for (iter = 0; iter < it_max*Random_Trials; iter++) {
 		  
 		/*--- The independent term of the solution of our system is -Gradient(sol_old) ---*/
 
@@ -6432,19 +6501,18 @@ double *CFreeFormDefBox::GetParametricCoord_Iterative(double *xyz, double *Param
 
 		MinNormError = min(NormError, MinNormError);
 		  
-		/*--- If we have no convergence with 200 iterations probably we are in a local minima.
-     If we are outside the FFDBox then NormError > sqrt(3) ---*/
+		/*--- If we have no convergence with Random_Trials iterations probably we are in a local minima. ---*/
     
-		if ( (((iter % 200) == 0) && (iter != 0)) || (NormError > 1.8) ) {
+		if ( (((iter % it_max) == 0) && (iter != 0)) || (NormError > 1.8) ) {
 			RandonCounter++;
-      for (iDim = 0; iDim < nDim; iDim++)
-        ParamCoord[iDim] = double(rand())/double(RAND_MAX);
-      
-      if (RandonCounter == 50) {
-        cout << endl << "Unknown point: (" << xyz[0] <<", "<< xyz[1] <<", "<< xyz[2] <<"). Min Error: "<< MinNormError <<"."<< endl;
-        break;
+      if (RandonCounter == Random_Trials) {
+        cout << endl << "Unknown point: (" << xyz[0] <<", "<< xyz[1] <<", "<< xyz[2] <<"). Min Error: "<< MinNormError <<". Iter: "<< iter <<"."<< endl;
       }
-      
+      else {
+        SOR_Factor = 0.1;
+        for (iDim = 0; iDim < nDim; iDim++)
+          ParamCoord[iDim] = double(rand())/double(RAND_MAX);
+      }
 		}
     
 	}
@@ -6453,8 +6521,14 @@ double *CFreeFormDefBox::GetParametricCoord_Iterative(double *xyz, double *Param
 		delete [] Hessian[iDim];
 	delete [] Hessian;
 
-	/*--- Real Solution is now ParamCoord; Return it ---*/
+  /*--- The code has hit the max number of iterations ---*/
+
+  if (iter == it_max*Random_Trials) {
+    cout << "Unknown point: (" << xyz[0] <<", "<< xyz[1] <<", "<< xyz[2] <<"). Increase the value of FFD_ITERATIONS." << endl;
+  }
   
+	/*--- Real Solution is now ParamCoord; Return it ---*/
+
 	return ParamCoord;
   
 }

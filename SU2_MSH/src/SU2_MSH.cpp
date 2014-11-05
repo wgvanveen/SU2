@@ -2,7 +2,7 @@
  * \file SU2_MSH.cpp
  * \brief Main file of Mesh Adaptation Code (SU2_MSH).
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 	/*--- Check the orientation before computing geometrical quantities ---*/
   
 	cout << "Check numerical grid orientation." <<endl;
-	geometry->SetBoundVolume(); geometry->Check_Orientation(config);
+	geometry->SetBoundVolume(); geometry->Check_IntElem_Orientation(config); geometry->Check_BoundElem_Orientation(config);
 	
 	/*--- Create the edge structure ---*/
   
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
 		if (config->GetSmoothNumGrid()) {
 			cout << "Preprocessing for doing the implicit smoothing." << endl;
 			geo_adapt->SetPoint_Connectivity(); geo_adapt->SetElement_Connectivity();
-			geo_adapt->SetBoundVolume(); geo_adapt->Check_Orientation(config);
+			geo_adapt->SetBoundVolume(); geo_adapt->Check_IntElem_Orientation(config); geo_adapt->Check_BoundElem_Orientation(config);
 			geo_adapt->SetEdges(); geo_adapt->SetVertex(config);
 			cout << "Implicit smoothing of the numerical grid coordinates." << endl;
 			geo_adapt->SetCoord_Smoothing(5, 1.5, config);

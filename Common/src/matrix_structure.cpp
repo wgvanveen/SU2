@@ -2,7 +2,7 @@
  * \file matrix_structure.cpp
  * \brief Main subroutines for doing the sparse structures.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -25,7 +25,7 @@
 CSysMatrix::CSysMatrix(void) {
   
   /*--- Array initialization ---*/
-  
+
   matrix            = NULL;
   row_ptr           = NULL;
   col_ind           = NULL;
@@ -221,14 +221,19 @@ void CSysMatrix::SetIndexes(unsigned long val_nPoint, unsigned long val_nPointDo
   
   
   /*--- Set specific preconditioner matrices (ILU) ---*/
-  if (config->GetKind_Linear_Solver_Prec() == ILU) {
+  
+  if ((config->GetKind_Linear_Solver_Prec() == ILU) ||
+    (config->GetKind_Linear_Solver() == SMOOTHER_ILU)) {
     ILU_matrix = new double [nnz*nVar*nEqn];	// Reserve memory for the ILU matrix
     for (iVar = 0; iVar < nnz*nVar*nEqn; iVar++)    ILU_matrix[iVar] = 0.0;
   }
   
   /*--- Set specific preconditioner matrices (Jacobi and Linelet) ---*/
+  
   if ((config->GetKind_Linear_Solver_Prec() == JACOBI) ||
-      (config->GetKind_Linear_Solver_Prec() == LINELET))   {
+      (config->GetKind_Linear_Solver_Prec() == LINELET) ||
+      (config->GetKind_Linear_Solver() == SMOOTHER_JACOBI) ||
+      (config->GetKind_Linear_Solver() == SMOOTHER_LINELET))   {
     invM = new double [nPoint*nVar*nEqn];	// Reserve memory for the values of the inverse of the preconditioner
     for (iVar = 0; iVar < nPoint*nVar*nEqn; iVar++) invM[iVar] = 0.0;
   }
@@ -427,8 +432,7 @@ void CSysMatrix::DeleteValsRowi(unsigned long i) {
 
 void CSysMatrix::Gauss_Elimination(unsigned long block_i, double* rhs) {
   
-  unsigned short jVar, kVar;
-  short iVar;
+  short iVar, jVar, kVar; // This is important, otherwise some compilers optimizations will fail
   double weight, aux;
   
   double *Block = GetBlock(block_i, block_i);
@@ -436,9 +440,9 @@ void CSysMatrix::Gauss_Elimination(unsigned long block_i, double* rhs) {
   /*--- Copy block matrix, note that the original matrix
    is modified by the algorithm---*/
   
-  for (kVar = 0; kVar < nVar; kVar++)
-    for (jVar = 0; jVar < nVar; jVar++)
-      block[kVar*nVar+jVar] = Block[kVar*nVar+jVar];
+  for (iVar = 0; iVar < (short)nVar; iVar++)
+    for (jVar = 0; jVar < (short)nVar; jVar++)
+      block[iVar*nVar+jVar] = Block[iVar*nVar+jVar];
   
   /*--- Gauss elimination ---*/
   
@@ -461,9 +465,9 @@ void CSysMatrix::Gauss_Elimination(unsigned long block_i, double* rhs) {
     /*--- Backwards substitution ---*/
     
     rhs[nVar-1] = rhs[nVar-1] / block[nVar*nVar-1];
-    for (iVar = nVar-2; iVar >= 0; iVar--) {
+    for (iVar = (short)nVar-2; iVar >= 0; iVar--) {
       aux = 0.0;
-      for (jVar = iVar+1; jVar < nVar; jVar++)
+      for (jVar = iVar+1; jVar < (short)nVar; jVar++)
         aux += block[iVar*nVar+jVar]*rhs[jVar];
       rhs[iVar] = (rhs[iVar]-aux) / block[iVar*nVar+iVar];
       if (iVar == 0) break;
@@ -474,17 +478,17 @@ void CSysMatrix::Gauss_Elimination(unsigned long block_i, double* rhs) {
 
 void CSysMatrix::Gauss_Elimination_ILUMatrix(unsigned long block_i, double* rhs) {
   
-  unsigned short jVar, kVar;
-  short iVar;
+  short iVar, jVar, kVar; // This is important, otherwise some compilers optimizations will fail
   double weight, aux;
   
   double *Block = GetBlock_ILUMatrix(block_i, block_i);
   
   /*--- Copy block matrix, note that the original matrix
    is modified by the algorithm---*/
-  for (kVar = 0; kVar < nVar; kVar++)
-    for (jVar = 0; jVar < nVar; jVar++)
-      block[kVar*nVar+jVar] = Block[kVar*nVar+jVar];
+  
+  for (iVar = 0; iVar < (short)nVar; iVar++)
+    for (jVar = 0; jVar < (short)nVar; jVar++)
+      block[iVar*nVar+jVar] = Block[iVar*nVar+jVar];
   
   /*--- Gauss elimination ---*/
   if (nVar == 1) {
@@ -504,9 +508,9 @@ void CSysMatrix::Gauss_Elimination_ILUMatrix(unsigned long block_i, double* rhs)
     
     /*--- Backwards substitution ---*/
     rhs[nVar-1] = rhs[nVar-1] / block[nVar*nVar-1];
-    for (iVar = nVar-2; iVar >= 0; iVar--) {
+    for (iVar = (short)nVar-2; iVar >= 0; iVar--) {
       aux = 0.0;
-      for (jVar = iVar+1; jVar < nVar; jVar++)
+      for (jVar = iVar+1; jVar < (short)nVar; jVar++)
         aux += block[iVar*nVar+jVar]*rhs[jVar];
       rhs[iVar] = (rhs[iVar]-aux) / block[iVar*nVar+iVar];
       if (iVar == 0) break;
@@ -517,15 +521,15 @@ void CSysMatrix::Gauss_Elimination_ILUMatrix(unsigned long block_i, double* rhs)
 
 void CSysMatrix::Gauss_Elimination(double* Block, double* rhs) {
   
-  unsigned short jVar, kVar;
-  short iVar;
+  short iVar, jVar, kVar; // This is important, otherwise some compilers optimizations will fail
   double weight, aux;
   
   /*--- Copy block matrix, note that the original matrix
    is modified by the algorithm---*/
-  for (kVar = 0; kVar < nVar; kVar++)
-    for (jVar = 0; jVar < nVar; jVar++)
-      block[kVar*nVar+jVar] = Block[kVar*nVar+jVar];
+  
+  for (iVar = 0; iVar < (short)nVar; iVar++)
+    for (jVar = 0; jVar < (short)nVar; jVar++)
+      block[iVar*nVar+jVar] = Block[iVar*nVar+jVar];
   
   
   if (nVar == 1) {
@@ -544,9 +548,9 @@ void CSysMatrix::Gauss_Elimination(double* Block, double* rhs) {
     
     /*--- Backwards substitution ---*/
     rhs[nVar-1] = rhs[nVar-1] / block[nVar*nVar-1];
-    for (iVar = nVar-2; iVar >= 0; iVar--) {
+    for (iVar = (short)nVar-2; iVar >= 0; iVar--) {
       aux = 0.0;
-      for (jVar = iVar+1; jVar < nVar; jVar++)
+      for (jVar = iVar+1; jVar < (short)nVar; jVar++)
         aux += block[iVar*nVar+jVar]*rhs[jVar];
       rhs[iVar] = (rhs[iVar]-aux) / block[iVar*nVar+iVar];
       if (iVar == 0) break;
@@ -1101,7 +1105,7 @@ void CSysMatrix::ComputeJacobiPreconditioner(const CSysVector & vec, CSysVector 
   
 }
 
-void CSysMatrix::ComputeILUPreconditioner(const CSysVector & vec, CSysVector & prod) {
+void CSysMatrix::ComputeILUPreconditioner(const CSysVector & vec, CSysVector & prod, CGeometry *geometry, CConfig *config) {
   
   unsigned long index, index_;
   double *Block_ij, *Block_jk;
@@ -1155,6 +1159,10 @@ void CSysMatrix::ComputeILUPreconditioner(const CSysVector & vec, CSysVector & p
     }
   }
   
+  /*--- MPI Parallelization ---*/
+  
+  SendReceive_Solution(prod, geometry, config);
+  
   /*--- Backwards substitution ---*/
   
   InverseDiagonalBlock_ILUMatrix((nPoint-1), block_inverse);
@@ -1195,6 +1203,10 @@ void CSysMatrix::ComputeILUPreconditioner(const CSysVector & vec, CSysVector & p
     
   }
   
+  /*--- MPI Parallelization ---*/
+  
+  SendReceive_Solution(prod, geometry, config);
+  
 }
 
 void CSysMatrix::ComputeLU_SGSPreconditioner(const CSysVector & vec, CSysVector & prod, CGeometry *geometry, CConfig *config) {
@@ -1211,6 +1223,10 @@ void CSysMatrix::ComputeLU_SGSPreconditioner(const CSysVector & vec, CSysVector 
       prod[iPoint*nVar+iVar] = aux_vector[iVar];                       // Assesing x* = solution
   }
   
+  /*--- MPI Parallelization ---*/
+  
+  SendReceive_Solution(prod, geometry, config);
+
   /*--- Second part of the symmetric iteration: (D+U).x_(1) = D.x* ---*/
   
   for (iPoint = nPointDomain-1; (int)iPoint >= 0; iPoint--) {
@@ -1224,6 +1240,10 @@ void CSysMatrix::ComputeLU_SGSPreconditioner(const CSysVector & vec, CSysVector 
     for (iVar = 0; iVar < nVar; iVar++)
       prod[iPoint*nVar + iVar] = aux_vector[iVar]; // Assesing x_(1) = solution
   }
+
+  /*--- MPI Parallelization ---*/
+  
+  SendReceive_Solution(prod, geometry, config);
   
 }
 
@@ -1246,6 +1266,10 @@ void CSysMatrix::ComputeLineletPreconditioner(const CSysVector & vec, CSysVector
       }
     }
   }
+  
+  /*--- MPI Parallelization ---*/
+  
+  SendReceive_Solution(prod, geometry, config);
   
   /*--- Solve linelet using a Thomas' algorithm ---*/
   

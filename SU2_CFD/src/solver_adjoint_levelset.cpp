@@ -2,7 +2,7 @@
  * \file solution_adjoint_levelset.cpp
  * \brief Main subrotuines for solving the level set problem.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -51,6 +51,11 @@ CAdjLevelSetSolver::CAdjLevelSetSolver(CGeometry *geometry, CConfig *config, uns
     Residual_RMS  = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) Residual_RMS[iVar]  = 0.0;
     Residual_Max  = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) Residual_Max[iVar]  = 0.0;
     Point_Max  = new unsigned long[nVar]; for (iVar = 0; iVar < nVar; iVar++) Point_Max[iVar]  = 0;
+    Point_Max_Coord = new double*[nVar];
+    for (iVar = 0; iVar < nVar; iVar++) {
+      Point_Max_Coord[iVar] = new double[nDim];
+      for (iDim = 0; iDim < nDim; iDim++) Point_Max_Coord[iVar][iDim] = 0.0;
+    }
     Residual_i    = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) Residual_i[iVar]    = 0.0;
     Residual_j    = new double[nVar]; for (iVar = 0; iVar < nVar; iVar++) Residual_j[iVar]    = 0.0;
 	
@@ -95,10 +100,11 @@ CAdjLevelSetSolver::CAdjLevelSetSolver(CGeometry *geometry, CConfig *config, uns
       }
       
       /*--- Initialization of the structure of the whole Jacobian ---*/
-      if (rank == MASTER_NODE) cout << "Initialize jacobian structure (Adj. Level Set). MG level: 0." << endl;
+      if (rank == MASTER_NODE) cout << "Initialize Jacobian structure (Adj. Level Set). MG level: 0." << endl;
       Jacobian.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
       
-      if (config->GetKind_Linear_Solver_Prec() == LINELET) {
+      if ((config->GetKind_Linear_Solver_Prec() == LINELET) ||
+          (config->GetKind_Linear_Solver() == SMOOTHER_LINELET)) {
         nLineLets = Jacobian.BuildLineletPreconditioner(geometry, config);
         if (rank == MASTER_NODE) cout << "Compute linelet structure. " << nLineLets << " elements in each line (average)." << endl;
       }
@@ -137,7 +143,7 @@ CAdjLevelSetSolver::CAdjLevelSetSolver(CGeometry *geometry, CConfig *config, uns
 		
 		if (restart_file.fail()) {
 			cout << "There is no level set restart file!!" << endl;
-			exit(1);
+			exit(EXIT_FAILURE);
 		}
     
     /*--- In case this is a parallel simulation, we need to perform the 
@@ -964,76 +970,61 @@ void CAdjLevelSetSolver::BC_Outlet(CGeometry *geometry, CSolver **solver_contain
 }
 
 void CAdjLevelSetSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_container, CConfig *config) {
-	unsigned long iPoint;
+  
+	unsigned long iPoint, IterLinSol;
 	double Delta = 0.0, Vol;
 	
 	/*--- Set maximum residual to zero ---*/
+  
     SetRes_RMS(0, 0.0);
     SetRes_Max(0, 0.0, 0);
     
 	/*--- Build implicit system ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
 		
 		/*--- Read the volume ---*/
+    
 		Vol = geometry->node[iPoint]->GetVolume();
 		
 		/*--- Modify matrix diagonal to assure diagonal dominance ---*/
+    
 		Delta = Vol / solver_container[FLOW_SOL]->node[iPoint]->GetDelta_Time();
         
 		Jacobian.AddVal2Diag(iPoint,Delta);
         
 		/*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
+    
 		LinSysRes[iPoint] = -LinSysRes[iPoint];
 		LinSysSol[iPoint] = 0.0;
 		AddRes_RMS(0, LinSysRes[iPoint]*LinSysRes[iPoint]);
-        AddRes_Max(0, fabs(LinSysRes[iPoint]), geometry->node[iPoint]->GetGlobalIndex());
+    AddRes_Max(0, fabs(LinSysRes[iPoint]), geometry->node[iPoint]->GetGlobalIndex(), geometry->node[iPoint]->GetCoord());
 	}
     
     /*--- Initialize residual and solution at the ghost points ---*/
+  
     for (iPoint = geometry->GetnPointDomain(); iPoint < geometry->GetnPoint(); iPoint++) {
         LinSysRes[iPoint] = 0.0;
         LinSysSol[iPoint] = 0.0;
     }
 	
-  CMatrixVectorProduct* mat_vec = new CSysMatrixVectorProduct(Jacobian, geometry, config);
-  
-  CPreconditioner* precond = NULL;
-  if (config->GetKind_Linear_Solver_Prec() == JACOBI) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CJacobiPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == ILU) {
-    Jacobian.BuildILUPreconditioner();
-    precond = new CILUPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LU_SGS) {
-    precond = new CLU_SGSPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LINELET) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CLineletPreconditioner(Jacobian, geometry, config);
-  }
+  /*--- Solve or smooth the linear system ---*/
   
   CSysSolve system;
-  if (config->GetKind_Linear_Solver() == BCGSTAB)
-    system.BCGSTAB(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(),
-                   config->GetLinear_Solver_Iter(), false);
-  else if (config->GetKind_Linear_Solver() == FGMRES)
-    system.FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(),
-                 config->GetLinear_Solver_Iter(), false);
-  
-  delete mat_vec;
-  delete precond;
+  IterLinSol = system.Solve(Jacobian, LinSysRes, LinSysSol, geometry, config);
 	
 	/*--- Update solution (system written in terms of increments), be careful with the update of the
 	 scalar equations which includes the density ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++)
 		node[iPoint]->AddSolution(0, config->GetLinear_Solver_Relax()*LinSysSol[iPoint]);
     
     /*--- MPI solution ---*/
+  
     Set_MPI_Solution(geometry, config);
     
     /*--- Compute the root mean square residual ---*/
+  
     SetResidual_RMS(geometry, config);
   
 }

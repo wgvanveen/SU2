@@ -2,7 +2,7 @@
  * \file numerics_structure.inl
  * \brief In-Line subroutines of the <i>numerics_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -423,11 +423,7 @@ inline double CUpwTurkel_Flow::GetPrecond_Beta() { return Beta; }
 
 inline double CNumerics::GetElec_CondIntegral() {return 0;}
 
-inline double CSource_JouleHeating::GetElec_CondIntegral() {return Elec_Conduct*Coord_i[1]*(Coord_i[1]-Coord_j[1]);}
-
 inline void CNumerics::SetElec_CondIntegralsqr(double val_var) {}
-
-inline void CSource_JouleHeating::SetElec_CondIntegralsqr(double val_var) {Integralsqr = val_var; }
 
 inline void CNumerics::ComputeResidual(double **val_Jacobian_i, double *val_Jacobian_mui, double ***val_Jacobian_gradi, CConfig *config) { }
 

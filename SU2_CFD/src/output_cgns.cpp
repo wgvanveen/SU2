@@ -2,7 +2,7 @@
  * \file output_cgns.cpp
  * \brief Main subroutines for output solver information.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -75,8 +75,8 @@ void COutput::SetCGNS_Coordinates(CConfig *config, CGeometry *geometry, unsigned
 		element_dims = geometry->GetnDim();		// Currently (release 2.0) only all-2D or all-3D zones permitted
 		physical_dims = element_dims;
 		
-		isize[0][0] = nGlobal_Poin;				// vertex size
-		isize[1][0] = nGlobal_Elem;				// cell size
+		isize[0][0] = (cgsize_t)nGlobal_Poin;				// vertex size
+		isize[1][0] = (cgsize_t)nGlobal_Elem;				// cell size
 		isize[2][0] = 0;						// boundary vertex size (zero if elements not sorted)
     
     cgns_err = cg_goto(cgns_file,cgns_base,"Zone_t",cgns_zone,"end");
@@ -107,15 +107,15 @@ void COutput::SetCGNS_Coordinates(CConfig *config, CGeometry *geometry, unsigned
     
 		cgns_err = cg_open((char *)results_file.str().c_str(),CG_MODE_WRITE,&cgns_file);
 
-		element_dims = geometry->GetnDim();		// Currently (release 3.2.0 "eagle") only all-2D or all-3D zones permitted
+		element_dims = geometry->GetnDim();		// Currently (release 3.2.3 "eagle") only all-2D or all-3D zones permitted
 		physical_dims = element_dims;
 
-    /*--- write CGNS base data (one base assumed as of version 3.2.0 "eagle") ---*/
+    /*--- write CGNS base data (one base assumed as of version 3.2.3 "eagle") ---*/
 		cgns_err = cg_base_write(cgns_file,"SU2 Base",element_dims,physical_dims,&cgns_base_results);
 		if (cgns_err) cg_error_print();
 
-		isize[0][0] = geometry->GetGlobal_nPointDomain();				// vertex size
-		isize[1][0] = nGlobal_Elem;				// cell size
+		isize[0][0] = (cgsize_t)geometry->GetGlobal_nPointDomain();				// vertex size
+		isize[1][0] = (cgsize_t)nGlobal_Elem;				// cell size
 		isize[2][0] = 0;						// boundary vertex size (zero if elements not sorted)
 
 		/*--- write CGNS zone data ---*/
@@ -184,10 +184,6 @@ void COutput::SetCGNS_Connectivity(CConfig *config, CGeometry *geometry, unsigne
 	bool unsteady = config->GetUnsteady_Simulation();
 	cgsize_t isize[3][1], elem_start, elem_end, N;
   
-  bool compressible = (config->GetKind_Regime() == COMPRESSIBLE);
-	bool incompressible = (config->GetKind_Regime() == INCOMPRESSIBLE);
-	bool freesurface = (config->GetKind_Regime() == FREESURFACE);
-  
 	/*--- Create CGNS base file name ---*/
 	base_file = config->GetFlow_FileName();
   
@@ -229,7 +225,7 @@ void COutput::SetCGNS_Connectivity(CConfig *config, CGeometry *geometry, unsigne
 		element_dims = geometry->GetnDim();		// Currently (release 2.0) only all-2D or all-3D zones permitted
 		physical_dims = element_dims;
     
-		/*--- write CGNS base data (one base assumed as of version 3.2.0 "eagle") ---*/
+		/*--- write CGNS base data (one base assumed as of version 3.2.3 "eagle") ---*/
 		cgns_err = cg_base_write(cgns_file,"SU2 Base",element_dims,physical_dims,&cgns_base);
 		if (cgns_err) cg_error_print();
     
@@ -243,29 +239,27 @@ void COutput::SetCGNS_Connectivity(CConfig *config, CGeometry *geometry, unsigne
 		/*--- Write governing equations to CGNS file ---*/
 		cgns_err = cg_goto(cgns_file,cgns_base,"FlowEquationSet_t",1,"end");
 		if (cgns_err) cg_error_print();
-		if (compressible) {
-			switch (config->GetKind_Solver()) {
-        case EULER:
-          cgns_err = cg_governing_write(Euler); break;
-        case NAVIER_STOKES:
-          cgns_err = cg_governing_write(NSLaminar); break;
-        case RANS:
-          cgns_err = cg_governing_write(NSTurbulent); break;
-        default:
-          break; // cgns_err = cg_governing_write(CG_UserDefined);
-			}
-			if (cgns_err) cg_error_print();
-		}
+    switch (config->GetKind_Solver()) {
+      case EULER:
+        cgns_err = cg_governing_write(Euler); break;
+      case NAVIER_STOKES:
+        cgns_err = cg_governing_write(NSLaminar); break;
+      case RANS:
+        cgns_err = cg_governing_write(NSTurbulent); break;
+      default:
+        break; // cgns_err = cg_governing_write(CG_UserDefined);
+    }
+    if (cgns_err) cg_error_print();
     
 		if (unsteady) cgns_err = cg_simulation_type_write(cgns_file,cgns_base,TimeAccurate);
 		else cgns_err = cg_simulation_type_write(cgns_file,cgns_base,NonTimeAccurate);
 		if (cgns_err) cg_error_print();
     
-		cgns_err = cg_descriptor_write("Solver Information","SU2 version 3.2.0 \"eagle\", Stanford University Aerospace Design Lab");
+		cgns_err = cg_descriptor_write("Solver Information","SU2 version 3.2.3 \"eagle\", Stanford University Aerospace Design Lab");
 		if (cgns_err) cg_error_print();
 		
-		isize[0][0] = geometry->GetGlobal_nPointDomain(); //;				// vertex size
-		isize[1][0] = nGlobal_Elem;				// cell size
+		isize[0][0] = (cgsize_t)geometry->GetGlobal_nPointDomain(); //;				// vertex size
+		isize[1][0] = (cgsize_t)nGlobal_Elem;				// cell size
 		isize[2][0] = 0;						// boundary vertex size (zero if elements not sorted)
     
 		/*--- write CGNS zone data ---*/
@@ -342,7 +336,7 @@ void COutput::SetCGNS_Solution(CConfig *config, CGeometry *geometry, unsigned sh
   
 	/*--- local CGNS variables ---*/
 	int cgns_file,cgns_flow,cgns_field,element_dims,physical_dims,cgns_err;
-	unsigned long iVar, iExtIter = config->GetExtIter();
+	unsigned long jVar, iVar, iExtIter = config->GetExtIter();
 	string base_file, buffer, elements_name;
 	stringstream name, results_file;
 	bool unsteady = config->GetUnsteady_Simulation();
@@ -381,8 +375,8 @@ void COutput::SetCGNS_Solution(CConfig *config, CGeometry *geometry, unsigned sh
 		results_file << ".cgns";
 	}
 		
-		isize[0][0] = nGlobal_Poin;				// vertex size
-		isize[1][0] = nGlobal_Elem;				// cell size
+		isize[0][0] = (cgsize_t)nGlobal_Poin;				// vertex size
+		isize[1][0] = (cgsize_t)nGlobal_Elem;				// cell size
 		isize[2][0] = 0;						// boundary vertex size (zero if elements not sorted)
     
     
@@ -421,12 +415,12 @@ void COutput::SetCGNS_Solution(CConfig *config, CGeometry *geometry, unsigned sh
 		element_dims = geometry->GetnDim();		// Currently (release 2.0) only all-2D or all-3D zones permitted
 		physical_dims = element_dims;
     
-//		/*--- write CGNS base data (one base assumed as of version 3.2.0 "eagle") ---*/
+//		/*--- write CGNS base data (one base assumed as of version 3.2.3 "eagle") ---*/
 //		cgns_err = cg_base_write(cgns_file,"SU2 Base",element_dims,physical_dims,&cgns_base);
 //		if (cgns_err) cg_error_print();
     
-		isize[0][0] = nGlobal_Poin;				// vertex size
-		isize[1][0] = nGlobal_Elem;				// cell size
+		isize[0][0] = (cgsize_t)nGlobal_Poin;				// vertex size
+		isize[1][0] = (cgsize_t)nGlobal_Elem;				// cell size
 		isize[2][0] = 0;						// boundary vertex size (zero if elements not sorted)
     
 //		/*--- write CGNS zone data ---*/
@@ -469,14 +463,23 @@ void COutput::SetCGNS_Solution(CConfig *config, CGeometry *geometry, unsigned sh
 		if (cgns_err) cg_error_print();
 	}
   
-	/*--- Write conservative variable residuals to CGNS file ---*/
-    if (config->GetWrt_Residuals()){
-        for (iVar = nVar_Consv; iVar < 2*nVar_Consv; iVar++) {
-            name.str(string()); name << "Conservative Residual " << iVar-nVar_Consv+1;
-            cgns_err = cg_field_write(cgns_file,cgns_base,cgns_zone,cgns_flow,RealDouble,(char *)name.str().c_str(),Data[iVar],&cgns_field);
-            if (cgns_err) cg_error_print();
-        }
+  /*--- Write primitive variable residuals to CGNS file ---*/
+  if (config->GetWrt_Limiters()){
+    for (jVar = 0; jVar < nVar_Consv; jVar++) {
+      name.str(string()); name << "Primitive Limiter " << jVar+1;
+      cgns_err = cg_field_write(cgns_file,cgns_base,cgns_zone,cgns_flow,RealDouble,(char *)name.str().c_str(),Data[iVar],&cgns_field); iVar++;
+      if (cgns_err) cg_error_print();
     }
+  }
+  
+	/*--- Write conservative variable residuals to CGNS file ---*/
+  if (config->GetWrt_Residuals()){
+    for (jVar = 0; jVar < nVar_Consv; jVar++) {
+      name.str(string()); name << "Conservative Residual " << jVar+1;
+      cgns_err = cg_field_write(cgns_file,cgns_base,cgns_zone,cgns_flow,RealDouble,(char *)name.str().c_str(),Data[iVar],&cgns_field); iVar++;
+      if (cgns_err) cg_error_print();
+    }
+  }
   
 	/*--- Write grid velocities to CGNS file, if applicable ---*/
 	if (config->GetGrid_Movement()) {
@@ -529,7 +532,7 @@ void COutput::SetCGNS_Solution(CConfig *config, CGeometry *geometry, unsigned sh
         
       default:
         cout << "Error: Unrecognized equation type \n"; 
-        exit(0); break;
+        exit(EXIT_FAILURE); break;
 		}
 	}	
   

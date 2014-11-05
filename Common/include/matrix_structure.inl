@@ -2,7 +2,7 @@
  * \file matrix_structure.inl
  * \brief In-Line subroutines of the <i>matrix_structure.hpp</i> file.
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -69,7 +69,7 @@ inline void CILUPreconditioner::operator()(const CSysVector & u, CSysVector & v)
     cerr << "pointer to sparse matrix is NULL." << endl;
     throw(-1);
   }
-  sparse_matrix->ComputeILUPreconditioner(u, v);
+  sparse_matrix->ComputeILUPreconditioner(u, v, geometry, config);
 }
 
 inline CLU_SGSPreconditioner::CLU_SGSPreconditioner(CSysMatrix & matrix_ref, CGeometry *geometry_ref, CConfig *config_ref) {

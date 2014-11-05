@@ -2,7 +2,7 @@
  * \file solution_direct_turbulent.cpp
  * \brief Main subrotuines for solving direct problems (Euler, Navier-Stokes, etc.).
  * \author Aerospace Design Laboratory (Stanford University) <http://su2.stanford.edu>.
- * \version 3.2.0 "eagle"
+ * \version 3.2.3 "eagle"
  *
  * SU2, Copyright (C) 2012-2014 Aerospace Design Laboratory (ADL).
  *
@@ -52,6 +52,7 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
   nDim = geometry->GetnDim();
   nPoint = geometry->GetnPoint();
   nPointDomain = geometry->GetnPointDomain();
+<<<<<<< HEAD
 
   node = new CVariable*[geometry->GetnPoint()];
 
@@ -64,6 +65,29 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
     Residual     = new double[nVar]; Residual_RMS = new double[nVar];
     Residual_i   = new double[nVar]; Residual_j   = new double[nVar];
     Residual_Max = new double[nVar]; Point_Max    = new unsigned long[nVar];
+=======
+  
+	node = new CVariable*[geometry->GetnPoint()];
+	
+	/*--- Dimension of the problem --> 2 Transport equations (intermittency,Reth) ---*/
+	nVar = 2;
+	
+	if (iMesh == MESH_0) {
+		
+		/*--- Define some auxillary vectors related to the residual ---*/
+		Residual     = new double[nVar]; Residual_RMS = new double[nVar];
+		Residual_i   = new double[nVar]; Residual_j   = new double[nVar];
+    Residual_Max = new double[nVar];
+
+    /*--- Define some structures for locating max residuals ---*/
+    Point_Max = new unsigned long[nVar];
+    for (iVar = 0; iVar < nVar; iVar++) Point_Max[iVar] = 0;
+    Point_Max_Coord = new double*[nVar];
+    for (iVar = 0; iVar < nVar; iVar++) {
+      Point_Max_Coord[iVar] = new double[nDim];
+      for (iDim = 0; iDim < nDim; iDim++) Point_Max_Coord[iVar][iDim] = 0.0;
+    }
+>>>>>>> master
 
     /*--- Define some auxiliar vector related with the solution ---*/
     Solution   = new double[nVar];
@@ -88,8 +112,13 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
 			/*--- Initialization of the structure of the whole Jacobian ---*/
 			Jacobian.Initialize(nPoint, nPointDomain, nVar, nVar, true, geometry, config);
       
+<<<<<<< HEAD
 
       if (config->GetKind_Linear_Solver_Prec() == LINELET) {
+=======
+      if ((config->GetKind_Linear_Solver_Prec() == LINELET) ||
+          (config->GetKind_Linear_Solver() == SMOOTHER_LINELET)) {
+>>>>>>> master
         nLineLets = Jacobian.BuildLineletPreconditioner(geometry, config);
         if (rank == MASTER_NODE) cout << "Compute linelet structure. " << nLineLets << " elements in each line (average)." << endl;
       }
@@ -159,6 +188,7 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
       exit(1);
     }
 
+<<<<<<< HEAD
 		/*--- In case this is a parallel simulation, we need to perform the
          Global2Local index transformation first. ---*/
 		long *Global2Local;
@@ -170,6 +200,20 @@ CTransLMSolver::CTransLMSolver(CGeometry *geometry, CConfig *config, unsigned sh
 		/*--- Now fill array with the transform values only for local points ---*/
 		for(iPoint = 0; iPoint < nPointDomain; iPoint++) {
 			Global2Local[geometry->node[iPoint]->GetGlobalIndex()] = iPoint;
+=======
+	}
+	else {
+    cout << "No LM restart yet!!" << endl; // TODO, Aniket
+    int j;
+    cin >> j;
+		string mesh_filename = config->GetSolution_FlowFileName();
+		cstr = new char [mesh_filename.size()+1];
+		strcpy (cstr, mesh_filename.c_str());
+		restart_file.open(cstr, ios::in);
+		if (restart_file.fail()) {
+			cout << "There is no turbulent restart file!!" << endl;
+			exit(EXIT_FAILURE);
+>>>>>>> master
 		}
 
 		/*--- Read all lines in the restart file ---*/
@@ -692,79 +736,61 @@ void CTransLMSolver::Postprocessing(CGeometry *geometry, CSolver **solver_contai
 }
 
 void CTransLMSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solver_container, CConfig *config) {
+  
 	unsigned short iVar;
-	unsigned long iPoint, total_index;
+	unsigned long iPoint, total_index, IterLinSol;
 	double Delta, Delta_flow, Vol;
-    
-    
-    /*--- Set maximum residual to zero ---*/
+  
+  
+  /*--- Set maximum residual to zero ---*/
+  
 	for (iVar = 0; iVar < nVar; iVar++) {
 		SetRes_RMS(iVar, 0.0);
-        SetRes_Max(iVar, 0.0, 0);
-    }
-    
-	/*--- Build implicit system ---*/
-	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
-        Vol = geometry->node[iPoint]->GetVolume();
-        
-        /*--- Modify matrix diagonal to assure diagonal dominance ---*/
-        Delta_flow = Vol / (solver_container[FLOW_SOL]->node[iPoint]->GetDelta_Time());
-        Delta = Delta_flow;
-        Jacobian.AddVal2Diag(iPoint,Delta);
-        
-        for (iVar = 0; iVar < nVar; iVar++) {
-            total_index = iPoint*nVar+iVar;
-            
-            /*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
-            LinSysRes[total_index] = -LinSysRes[total_index];
-            LinSysSol[total_index] = 0.0;
-            AddRes_RMS(iVar, LinSysRes[total_index]*LinSysRes[total_index]*Vol);
-            AddRes_Max(iVar, fabs(LinSysRes[total_index]), geometry->node[iPoint]->GetGlobalIndex());
-        }
-    }
-    
-    /*--- Initialize residual and solution at the ghost points ---*/
-    for (iPoint = geometry->GetnPointDomain(); iPoint < geometry->GetnPoint(); iPoint++) {
-        for (iVar = 0; iVar < nVar; iVar++) {
-            total_index = iPoint*nVar + iVar;
-            LinSysRes[total_index] = 0.0;
-            LinSysSol[total_index] = 0.0;
-        }
-    }
-	
-	/*--- Solve the linear system (Krylov subspace methods) ---*/
-  CMatrixVectorProduct* mat_vec = new CSysMatrixVectorProduct(Jacobian, geometry, config);
+    SetRes_Max(iVar, 0.0, 0);
+  }
   
-  CPreconditioner* precond = NULL;
-  if (config->GetKind_Linear_Solver_Prec() == JACOBI) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CJacobiPreconditioner(Jacobian, geometry, config);
+	/*--- Build implicit system ---*/
+  
+	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
+    Vol = geometry->node[iPoint]->GetVolume();
+    
+    /*--- Modify matrix diagonal to assure diagonal dominance ---*/
+    
+    Delta_flow = Vol / (solver_container[FLOW_SOL]->node[iPoint]->GetDelta_Time());
+    Delta = Delta_flow;
+    Jacobian.AddVal2Diag(iPoint,Delta);
+    
+    for (iVar = 0; iVar < nVar; iVar++) {
+      total_index = iPoint*nVar+iVar;
+      
+      /*--- Right hand side of the system (-Residual) and initial guess (x = 0) ---*/
+      
+      LinSysRes[total_index] = -LinSysRes[total_index];
+      LinSysSol[total_index] = 0.0;
+      AddRes_RMS(iVar, LinSysRes[total_index]*LinSysRes[total_index]*Vol);
+      AddRes_Max(iVar, fabs(LinSysRes[total_index]), geometry->node[iPoint]->GetGlobalIndex(), geometry->node[iPoint]->GetCoord());
+    }
   }
-  else if (config->GetKind_Linear_Solver_Prec() == ILU) {
-    Jacobian.BuildILUPreconditioner();
-    precond = new CILUPreconditioner(Jacobian, geometry, config);
+  
+  /*--- Initialize residual and solution at the ghost points ---*/
+  
+  for (iPoint = geometry->GetnPointDomain(); iPoint < geometry->GetnPoint(); iPoint++) {
+    for (iVar = 0; iVar < nVar; iVar++) {
+      total_index = iPoint*nVar + iVar;
+      LinSysRes[total_index] = 0.0;
+      LinSysSol[total_index] = 0.0;
+    }
   }
-  else if (config->GetKind_Linear_Solver_Prec() == LU_SGS) {
-    precond = new CLU_SGSPreconditioner(Jacobian, geometry, config);
-  }
-  else if (config->GetKind_Linear_Solver_Prec() == LINELET) {
-    Jacobian.BuildJacobiPreconditioner();
-    precond = new CLineletPreconditioner(Jacobian, geometry, config);
-  }
+	
+  /*--- Solve or smooth the linear system ---*/
   
   CSysSolve system;
-  if (config->GetKind_Linear_Solver() == BCGSTAB)
-    system.BCGSTAB(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(),
-                   config->GetLinear_Solver_Iter(), false);
-  else if (config->GetKind_Linear_Solver() == FGMRES)
-    system.FGMRES(LinSysRes, LinSysSol, *mat_vec, *precond, config->GetLinear_Solver_Error(),
-                 config->GetLinear_Solver_Iter(), false);
-  
-  delete mat_vec;
-  delete precond;
+  IterLinSol = system.Solve(Jacobian, LinSysRes, LinSysSol, geometry, config);
   
 	/*--- Update solution (system written in terms of increments) ---*/
+  
 	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
+<<<<<<< HEAD
     if (iPoint==99) {
       double *sol = node[iPoint]->GetSolution();
 
@@ -787,6 +813,20 @@ void CTransLMSolver::ImplicitEuler_Iteration(CGeometry *geometry, CSolver **solv
     iPoint=99;
     double *sol = node[iPoint]->GetSolution();
 
+=======
+    for (iVar = 0; iVar < nVar; iVar++)
+      node[iPoint]->AddSolution(iVar, config->GetLinear_Solver_Relax()*LinSysSol[iPoint*nVar+iVar]);
+  }
+  
+  /*--- MPI solution ---*/
+  
+  Set_MPI_Solution(geometry, config);
+  
+  /*--- Compute the root mean square residual ---*/
+  
+  SetResidual_RMS(geometry, config);
+  
+>>>>>>> master
 }
 
 void CTransLMSolver::Upwind_Residual(CGeometry *geometry, CSolver **solver_container, CNumerics *numerics, CConfig *config, unsigned short iMesh) {
@@ -959,8 +999,45 @@ void CTransLMSolver::Source_Residual(CGeometry *geometry, CSolver **solver_conta
   bool boundary;
   ofstream sagt_debug;
 
+<<<<<<< HEAD
     //cout << "Setting Trans residual -AA " << endl;
     //cout << "\nBeginAA" << endl;
+=======
+  //cout << "Setting Trans residual -AA " << endl;
+  cout << "\nBeginAA" << endl;
+	for (iPoint = 0; iPoint < geometry->GetnPointDomain(); iPoint++) {
+    cout << "\niPoint: " << iPoint << endl;
+		
+		/*--- Conservative variables w/o reconstruction ---*/
+		numerics->SetConservative(solver_container[FLOW_SOL]->node[iPoint]->GetSolution(), NULL);
+		
+		/*--- Gradient of the primitive and conservative variables ---*/
+		numerics->SetPrimVarGradient(solver_container[FLOW_SOL]->node[iPoint]->GetGradient_Primitive(), NULL);
+		
+		/*--- Laminar and eddy viscosity ---*/
+		numerics->SetLaminarViscosity(solver_container[FLOW_SOL]->node[iPoint]->GetLaminarViscosity(), 0.0);
+    numerics->SetEddyViscosity(solver_container[FLOW_SOL]->node[iPoint]->GetEddyViscosity(),0.0);
+		
+		/*--- Turbulent variables w/o reconstruction, and its gradient ---*/
+		numerics->SetTransVar(node[iPoint]->GetSolution(), NULL);
+		// numerics->SetTransVarGradient(node[iPoint]->GetGradient(), NULL);  // Is this needed??
+		
+		/*--- Set volume ---*/
+		numerics->SetVolume(geometry->node[iPoint]->GetVolume());
+		
+		/*--- Set distance to the surface ---*/
+		numerics->SetDistance(geometry->node[iPoint]->GetWall_Distance(), 0.0);
+		
+		/*--- Compute the source term ---*/
+		numerics->ComputeResidual_TransLM(Residual, Jacobian_i, NULL, config, gamma_sep);
+		
+    /*-- Store gamma_sep in variable class --*/
+    node[iPoint]->SetGammaSep(gamma_sep);
+
+		/*--- Subtract residual and the Jacobian ---*/
+		LinSysRes.SubtractBlock(iPoint, Residual);
+    Jacobian.SubtractBlock(iPoint,iPoint,Jacobian_i);
+>>>>>>> master
 
    //static int start_counter=0;
    //if (start_counter < 100) {
